@@ -7,8 +7,8 @@ from scipy.optimize import minimize
 from utils import portfolio_metrics, RF
 
 
-MIN_WEIGHT = 0.03
-MAX_WEIGHT = 0.25
+MIN_WEIGHT = 0.00
+MAX_WEIGHT = 1.00
 N_FRONTIER_POINTS = 30
 
 
