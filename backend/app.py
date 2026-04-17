@@ -5,6 +5,9 @@ Run: gunicorn app:app
 
 import logging
 import os
+import numpy as np
+import traceback
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -17,33 +20,37 @@ from optimizer import (
 )
 from utils import portfolio_metrics
 
-import numpy as np
-
+# ── Logging ─────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+# ── App init ─────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
 
-# ── GLOBAL STATE ──────────────────────────────────────────────────────────────
-NAV_DATA = None
+# ── Load NAV data ONCE at startup (fixed) ─────────────────────────────────
+logger.info("Loading NAV data...")
+NAV_DATA = load_nav_data()
+logger.info(f"NAV data loaded for {len(NAV_DATA)} funds.")
 
+# ── Helper: Fix JSON serialization (CRITICAL FIX) ─────────────────────────
+def to_serializable(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.float64, np.float32, np.float16)):
+        return float(obj)
+    elif isinstance(obj, (np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, dict):
+        return {k: to_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [to_serializable(i) for i in obj]
+    return obj
 
-# ── SAFE NAV LOADER ───────────────────────────────────────────────────────────
-def get_nav_data():
-    global NAV_DATA
-    if NAV_DATA is None:
-        logger.info("Loading NAV data (lazy load)...")
-        NAV_DATA = load_nav_data()
-        logger.info(f"NAV loaded for {len(NAV_DATA)} funds")
-    return NAV_DATA
-
-
-# ── ROUTES ────────────────────────────────────────────────────────────────────
+# ── Routes ───────────────────────────────────────────────────────────────
 
 @app.route("/api/funds", methods=["GET"])
 def get_funds():
-    """Return fund universe grouped by category."""
     result = {}
     for fund in FUND_UNIVERSE:
         cat = fund["category"]
@@ -59,115 +66,161 @@ def get_funds():
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    NAV = get_nav_data()
-
-    body = request.get_json(force=True)
-    holdings = body.get("holdings", [])
-    pe = float(body.get("pe", 22.0))
-    pb = float(body.get("pb", 3.2))
-    frontier_index = body.get("frontier_index", None)
-
-    # Validation
-    if len(holdings) < 3:
-        return jsonify({"status": "error", "message": "Select at least 3 funds."}), 400
-
-    for h in holdings:
-        if float(h.get("amount", 0)) <= 0:
-            return jsonify({"status": "error", "message": f"Invalid amount for {h['scheme_code']}"}), 400
-
-    # 1. Current portfolio
     try:
-        current = analyze_current_portfolio(holdings, NAV)
-    except Exception as e:
-        logger.exception("Portfolio analysis failed")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        body = request.get_json(force=True)
 
-    codes = current["codes"]
-    mean_returns = current["mean_returns"]
-    cov_matrix = current["cov_matrix"]
+        holdings = body.get("holdings", [])
+        pe = float(body.get("pe", 22.0))
+        pb = float(body.get("pb", 3.2))
+        frontier_index = body.get("frontier_index", None)
 
-    fund_names = {f["scheme_code"]: f["name"] for f in current["funds"]}
-    fund_categories = {f["scheme_code"]: f["category"] for f in current["funds"]}
+        # ── Validation ─────────────────────────────────────────
+        if len(holdings) < 3:
+            return jsonify({"status": "error", "message": "Select at least 3 funds."}), 400
 
-    # 2. Frontier
-    try:
+        for h in holdings:
+            if float(h.get("amount", 0)) <= 0:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Amount must be > 0 for {h['scheme_code']}"
+                }), 400
+
+        # ── 1. Current portfolio ───────────────────────────────
+        current = analyze_current_portfolio(holdings, NAV_DATA)
+
+        codes = current["codes"]
+        mean_returns = current["mean_returns"]
+        cov_matrix = current["cov_matrix"]
+
+        fund_names = {f["scheme_code"]: f["name"] for f in current["funds"]}
+        fund_categories = {f["scheme_code"]: f["category"] for f in current["funds"]}
+
+        # ── 2. Efficient frontier ─────────────────────────────
         frontier = generate_efficient_frontier(
-            mean_returns, cov_matrix, codes,
+            mean_returns,
+            cov_matrix,
+            codes,
             [fund_names.get(c, c) for c in codes]
         )
-    except Exception as e:
-        logger.exception("Frontier failed")
-        return jsonify({"status": "error", "message": str(e)}), 500
 
-    if not frontier:
-        return jsonify({"status": "error", "message": "Frontier failed"}), 400
+        if not frontier:
+            return jsonify({
+                "status": "error",
+                "message": "Could not compute efficient frontier."
+            }), 400
 
-    # 3. Macro
-    macro = macro_equity_allocation(pe, pb)
+        # ── 3. Macro allocation ───────────────────────────────
+        macro = macro_equity_allocation(pe, pb)
 
-    # 4. Select point
-    if frontier_index is None:
-        idx = max(range(len(frontier)), key=lambda i: frontier[i]["sharpe"])
-    else:
-        idx = max(0, min(int(frontier_index), len(frontier) - 1))
+        # ── 4. Select frontier point ──────────────────────────
+        if frontier_index is None:
+            idx = max(range(len(frontier)), key=lambda i: frontier[i]["sharpe"])
+        else:
+            idx = max(0, min(int(frontier_index), len(frontier) - 1))
 
-    selected = frontier[idx]
+        selected = frontier[idx]
 
-    # 5. Optimal weights
-    try:
+        # ── 5. Optimal portfolio ──────────────────────────────
         optimal_weights = build_optimal_portfolio(
-            selected, macro, codes, fund_categories, fund_names
+            selected,
+            macro,
+            codes,
+            fund_categories,
+            fund_names
         )
+
+        # ── 6. Actions ───────────────────────────────────────
+        action_result = compute_actions(
+            current,
+            optimal_weights,
+            fund_names,
+            current["total_value"]
+        )
+
+        # ── 7. Metrics ───────────────────────────────────────
+        w_arr = np.array([optimal_weights.get(c, 0.0) for c in codes])
+        w_arr = w_arr / w_arr.sum()
+
+        opt_ret, opt_vol, opt_sr = portfolio_metrics(
+            w_arr,
+            np.array(mean_returns),
+            np.array(cov_matrix)
+        )
+
+        # ── 8. Insights ──────────────────────────────────────
+        insights = _generate_insights(
+            current, macro, action_result, opt_ret, opt_vol, opt_sr
+        )
+
+        # ── FINAL RESPONSE (fixed serialization) ─────────────
+        response = {
+            "status": "ok",
+            "current_portfolio": {
+                "funds": current["funds"],
+                "portfolio_return": current["portfolio_return"],
+                "portfolio_volatility": current["portfolio_volatility"],
+                "sharpe": current["sharpe"],
+                "total_value": current["total_value"],
+                "category_weights": current["category_weights"],
+            },
+            "optimal_portfolio": {
+                "weights": optimal_weights,
+                "return": round(opt_ret, 4),
+                "volatility": round(opt_vol, 4),
+                "sharpe": round(opt_sr, 4),
+            },
+            "frontier": frontier,
+            "selected_frontier_index": idx,
+            "macro": macro,
+            "actions": action_result,
+            "insights": insights,
+        }
+
+        return jsonify(to_serializable(response))
+
     except Exception as e:
-        logger.exception("Optimization failed")
+        logger.error(traceback.format_exc())
         return jsonify({"status": "error", "message": str(e)}), 500
-
-    # 6. Actions
-    action_result = compute_actions(
-        current,
-        optimal_weights,
-        fund_names,
-        current["total_value"]
-    )
-
-    # 7. Metrics
-    w = np.array([optimal_weights.get(c, 0.0) for c in codes])
-    w = w / w.sum()
-
-    opt_ret, opt_vol, opt_sr = portfolio_metrics(
-        w,
-        np.array(mean_returns),
-        np.array(cov_matrix)
-    )
-
-    return jsonify({
-        "status": "ok",
-        "current": current,
-        "optimal": {
-            "weights": optimal_weights,
-            "return": round(opt_ret, 4),
-            "vol": round(opt_vol, 4),
-            "sharpe": round(opt_sr, 4),
-        },
-        "frontier": frontier,
-        "selected_index": idx,
-        "macro": macro,
-        "actions": action_result,
-    })
 
 
 @app.route("/api/reload", methods=["POST"])
 def reload_nav():
     global NAV_DATA
     NAV_DATA = load_nav_data(force_refresh=True)
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "message": f"Reloaded {len(NAV_DATA)} funds."})
 
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"})
-    
+    return jsonify({"status": "ok", "nav_funds": len(NAV_DATA)})
 
-# ── MAIN ──────────────────────────────────────────────────────────────────────
+
+# ── Insights ─────────────────────────────────────────────────────────────
+def _generate_insights(current, macro, action_result, opt_ret, opt_vol, opt_sr):
+    insights = []
+
+    z = macro["z_score"]
+    eq_pct = macro["equity_pct"]
+
+    if z > 1.0:
+        insights.append(f"Market overvalued (z={z:.2f}) → Equity {eq_pct*100:.0f}%")
+    elif z < -1.0:
+        insights.append(f"Market undervalued (z={z:.2f}) → Equity {eq_pct*100:.0f}%")
+    else:
+        insights.append(f"Market fair (z={z:.2f}) → Equity {eq_pct*100:.0f}%")
+
+    if opt_ret > current["portfolio_return"]:
+        insights.append("Return improved")
+
+    if opt_vol < current["portfolio_volatility"]:
+        insights.append("Volatility reduced")
+
+    if opt_sr > current["sharpe"]:
+        insights.append("Sharpe improved")
+
+    return insights
+
+
+# ── Run ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
