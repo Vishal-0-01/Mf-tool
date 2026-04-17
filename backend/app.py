@@ -20,20 +20,21 @@ from optimizer import (
 )
 from utils import portfolio_metrics
 
-# ── Logging ─────────────────────────────────────────────────────────────
+# ── Logging ─────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# ── App init ─────────────────────────────────────────────────────────────
+# ── App init ────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
 
-# ── Load NAV data ───────────────────────────────────────────────────────
+# ── Load NAV data ───────────────────────────────────────
 logger.info("Loading NAV data...")
 NAV_DATA = load_nav_data()
 logger.info(f"NAV data loaded for {len(NAV_DATA)} funds.")
 
-# ── Safe JSON conversion ────────────────────────────────────────────────
+
+# ── JSON safe conversion ────────────────────────────────
 def to_serializable(obj):
     if isinstance(obj, np.ndarray):
         return obj.tolist()
@@ -48,7 +49,7 @@ def to_serializable(obj):
     return obj
 
 
-# ── Routes ───────────────────────────────────────────────────────────────
+# ── Routes ─────────────────────────────────────────────
 
 @app.route("/api/funds", methods=["GET"])
 def get_funds():
@@ -72,7 +73,7 @@ def analyze():
         pb = float(body.get("pb", 3.2))
         frontier_index = body.get("frontier_index", None)
 
-        # ── Validation ─────────────────────────────────────────
+        # ── Validation ─────────────────────────
         if len(holdings) < 3:
             return jsonify({"status": "error", "message": "Select at least 3 funds."}), 400
 
@@ -83,17 +84,22 @@ def analyze():
                     "message": f"Amount must be > 0 for {h['scheme_code']}"
                 }), 400
 
-        # ── 1. Current portfolio ───────────────────────────────
+        # ── 1. Portfolio analysis ──────────────
         current = analyze_current_portfolio(holdings, NAV_DATA)
 
-        codes = current["codes"]
-        mean_returns = np.array(current["mean_returns"], dtype=float)
-        cov_matrix = np.array(current["cov_matrix"], dtype=float)
+        # 🔥 USE FILTERED DATA (CORE FIX)
+        codes = current["filtered_codes"]
+        mean_returns = np.array(current["filtered_returns"], dtype=float)
+        cov_matrix = np.array(current["filtered_cov_matrix"], dtype=float)
 
-        fund_names = {f["scheme_code"]: f["name"] for f in current["funds"]}
-        fund_categories = {f["scheme_code"]: f["category"] for f in current["funds"]}
+        # full maps (then filtered)
+        full_names = {f["scheme_code"]: f["name"] for f in current["funds"]}
+        full_categories = {f["scheme_code"]: f["category"] for f in current["funds"]}
 
-        # ── 2. Efficient frontier ─────────────────────────────
+        fund_names = {k: v for k, v in full_names.items() if k in codes}
+        fund_categories = {k: v for k, v in full_categories.items() if k in codes}
+
+        # ── 2. Efficient frontier ─────────────
         frontier = generate_efficient_frontier(
             mean_returns,
             cov_matrix,
@@ -101,7 +107,7 @@ def analyze():
             [fund_names.get(c, c) for c in codes]
         )
 
-        # 🔥 HARD FALLBACK (prevents crash)
+        # fallback
         if not frontier:
             n = len(codes)
             w = np.full(n, 1.0 / n)
@@ -114,10 +120,10 @@ def analyze():
                 "weights": {codes[i]: float(round(w[i], 4)) for i in range(n)}
             }]
 
-        # ── 3. Macro allocation ───────────────────────────────
+        # ── 3. Macro ──────────────────────────
         macro = macro_equity_allocation(pe, pb)
 
-        # ── 4. Select frontier point ──────────────────────────
+        # ── 4. Select point ───────────────────
         def safe_sharpe(x):
             return float(x.get("sharpe", 0))
 
@@ -128,29 +134,28 @@ def analyze():
 
         selected = frontier[idx]
 
-        # ── 5. Optimal portfolio ──────────────────────────────
+        # ── 5. Optimal allocation ─────────────
         optimal_weights = build_optimal_portfolio(
             selected,
             macro,
-            codes,
+            codes,  # filtered only
             fund_categories,
             fund_names
         )
 
-        # 🔥 fallback if optimizer gives garbage
         if not optimal_weights or sum(optimal_weights.values()) == 0:
             n = len(codes)
             optimal_weights = {codes[i]: 1.0 / n for i in range(n)}
 
-        # ── 6. Actions ───────────────────────────────────────
+        # ── 6. Actions (FULL portfolio context) ──
         action_result = compute_actions(
-            current,
+            current,  # full portfolio
             optimal_weights,
-            fund_names,
+            full_names,
             current["total_value"]
         )
 
-        # ── 7. Metrics ───────────────────────────────────────
+        # ── 7. Metrics (on filtered set) ───────
         w_arr = np.array([optimal_weights.get(c, 0.0) for c in codes], dtype=float)
 
         if w_arr.sum() == 0:
@@ -158,7 +163,6 @@ def analyze():
         else:
             w_arr = w_arr / w_arr.sum()
 
-        # prevent NaNs
         w_arr = np.nan_to_num(w_arr, nan=0.0)
 
         try:
@@ -170,7 +174,7 @@ def analyze():
         except Exception:
             opt_ret, opt_vol, opt_sr = 0.0, 0.0, 0.0
 
-        # ── 8. Insights ──────────────────────────────────────
+        # ── 8. Insights ───────────────────────
         insights = _generate_insights(
             current, macro, action_result, opt_ret, opt_vol, opt_sr
         )
@@ -214,7 +218,6 @@ def health():
     return jsonify({"status": "ok", "nav_funds": len(NAV_DATA)})
 
 
-# ── Insights ─────────────────────────────────────────────────────────────
 def _generate_insights(current, macro, action_result, opt_ret, opt_vol, opt_sr):
     insights = []
 
@@ -240,6 +243,5 @@ def _generate_insights(current, macro, action_result, opt_ret, opt_vol, opt_sr):
     return insights
 
 
-# ── Run ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
