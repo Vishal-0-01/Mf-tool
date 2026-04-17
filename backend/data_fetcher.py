@@ -1,5 +1,6 @@
 """
 data_fetcher.py — Fetches NAV history using mftool; falls back to synthetic data.
+Corrected Scheme Codes for HDFC and Franklin Flexi Cap.
 """
 
 import os
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 # FUND UNIVERSE  (~60 funds across 5 categories)
 # ─────────────────────────────────────────────
+# Note: Codes updated to Regular - Growth (AMFI Standards)
 FUND_UNIVERSE = [
     # Large Cap
     {"name": "Mirae Asset Large Cap Fund",          "scheme_code": "118989", "category": "Large Cap"},
@@ -33,11 +35,11 @@ FUND_UNIVERSE = [
     {"name": "Parag Parikh Flexi Cap Fund",         "scheme_code": "122639", "category": "Flexi Cap"},
     {"name": "UTI Flexi Cap Fund",                  "scheme_code": "120716", "category": "Flexi Cap"},
     {"name": "Quant Flexi Cap Fund",                "scheme_code": "120842", "category": "Flexi Cap"},
-    {"name": "HDFC Flexi Cap Fund",                 "scheme_code": "100033", "category": "Flexi Cap"},
+    {"name": "HDFC Flexi Cap Fund",                 "scheme_code": "100375", "category": "Flexi Cap"}, # Corrected from 100033
     {"name": "PGIM India Flexi Cap Fund",           "scheme_code": "120594", "category": "Flexi Cap"},
     {"name": "JM Flexicap Fund",                    "scheme_code": "100048", "category": "Flexi Cap"},
     {"name": "Canara Robeco Flexi Cap Fund",        "scheme_code": "103503", "category": "Flexi Cap"},
-    {"name": "Franklin India Flexi Cap Fund",       "scheme_code": "100033", "category": "Flexi Cap"},
+    {"name": "Franklin India Flexi Cap Fund",       "scheme_code": "100525", "category": "Flexi Cap"}, # Corrected from 100033
     {"name": "Axis Flexi Cap Fund",                 "scheme_code": "120503", "category": "Flexi Cap"},
     {"name": "Kotak Flexicap Fund",                 "scheme_code": "120255", "category": "Flexi Cap"},
     {"name": "Aditya Birla SL Flexi Cap Fund",      "scheme_code": "119533", "category": "Flexi Cap"},
