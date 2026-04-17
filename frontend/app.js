@@ -245,34 +245,43 @@ async function runAnalysis() {
 }
 
 // ── Dashboard ──────────────────────────────────────────────────
+
 function renderDashboard(data) {
   const dash = document.getElementById("dashboard");
-  const empty = document.getElementById("empty-state");
-
-  if (!dash) {
-    console.error("Dashboard missing");
-    return;
-  }
-
-  if (empty) empty.style.display = "none";
+  document.getElementById("empty-state").style.display = "none";
   dash.style.display = "flex";
 
   const curr = data.current_portfolio;
-  const opt = data.optimal_portfolio;
+  const opt  = data.optimal_portfolio;
 
-  setMetric("m-ret-curr", pct(curr.portfolio_return));
+  // ── Metrics ──
+  setMetric("m-ret-curr", pct(curr.portfolio_return), curr.portfolio_return >= 0);
   setMetric("m-vol-curr", pct(curr.portfolio_volatility));
   setMetric("m-sr-curr", curr.sharpe.toFixed(2));
-  setMetric("m-ret-opt", pct(opt.return));
+
+  setMetric("m-ret-opt", pct(opt.return), opt.return >= 0);
   setMetric("m-vol-opt", pct(opt.volatility));
   setMetric("m-sr-opt", opt.sharpe.toFixed(2));
 
+  // ── Macro ──
+  const m = data.macro;
+  document.getElementById("macro-result").innerHTML =
+    `<span class="macro-chip">Equity ${pct(m.equity_pct)}</span>
+     <span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>`;
+
+  // 🔥 CRITICAL — these were missing/breaking
   renderDonut(curr.category_weights, opt.weights, data);
   renderFrontier(data.frontier, data.selected_frontier_index, curr, opt);
   renderActions(data.actions);
   renderInsights(data.insights);
-}
 
+  // slider
+  const slider = document.getElementById("frontier-slider");
+  if (slider) {
+    slider.max = data.frontier.length - 1;
+    slider.value = data.selected_frontier_index;
+  }
+}
 // ── Helpers ────────────────────────────────────────────────────
 function pct(v) { return (v * 100).toFixed(1) + "%"; }
 function fmt(v) { return v.toLocaleString("en-IN", { maximumFractionDigits: 0 }); }
