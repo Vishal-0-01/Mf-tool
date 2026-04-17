@@ -341,3 +341,49 @@ function clearError() {
   const el = document.getElementById("error-banner");
   if (el) el.classList.remove("visible");
 }
+
+async function reoptimizeWithSelected() {
+  if (!frontier.length) return;
+
+  const holdings = [];
+
+  document.querySelectorAll("input[data-code]").forEach(inp => {
+    const amt = parseFloat(inp.value);
+    if (amt > 0) {
+      holdings.push({
+        scheme_code: inp.dataset.code,
+        amount: amt
+      });
+    }
+  });
+
+  if (holdings.length < 3) {
+    showError("Need valid amounts for reoptimization.");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/analyze`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        holdings,
+        frontier_index: frontierIndex
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.status === "ok") {
+      renderDashboard(data);
+    } else {
+      showError(data.message || "Reoptimization failed.");
+    }
+
+  } catch (e) {
+    console.error(e);
+    showError("Reoptimization failed.");
+  }
+}
