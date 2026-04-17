@@ -1,5 +1,6 @@
 """
 portfolio_engine.py — Computes current portfolio metrics and macro allocation.
+FINAL STABLE VERSION (CONSISTENT FILTERING + SAFE FALLBACKS)
 """
 
 import numpy as np
@@ -17,7 +18,7 @@ from utils import (
 from data_fetcher import FUND_UNIVERSE
 
 
-MIN_DATA_POINTS = 30  # critical threshold
+MIN_DATA_POINTS = 30  # minimum history required
 
 
 # ─────────────────────────────────────────────
@@ -55,7 +56,7 @@ def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
 
     returns_df = returns_df.dropna(how="all")
 
-    # ── Fund-level stats ──
+    # ── Fund Stats ──
     fund_stats = []
     mean_ann_returns = []
     valid_mask = []
@@ -98,28 +99,30 @@ def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
     cov_np = cov.values
     cov_np = np.nan_to_num(cov_np, nan=0.0)
 
+    # Fix diagonal (variance stability)
     for i in range(len(codes)):
         if cov_np[i, i] <= 0:
             dr = returns_df[codes[i]].dropna() if codes[i] in returns_df else pd.Series()
             if len(dr) > 1:
                 cov_np[i, i] = (dr.std() ** 2) * 252
             else:
-                cov_np[i, i] = 0.04
+                cov_np[i, i] = 0.04  # fallback
 
-    # ── FILTER INVALID FUNDS (CRITICAL FIX) ──
+    # ── FILTER VALID FUNDS FOR OPTIMIZATION ──
     valid_indices = np.where(valid_mask)[0]
 
+    # Require at least 2 assets for optimization
     if len(valid_indices) >= 2:
         filtered_codes = [codes[i] for i in valid_indices]
         filtered_returns = mean_ann_returns[valid_indices]
         filtered_cov = cov_np[np.ix_(valid_indices, valid_indices)]
     else:
-        # fallback: avoid crash
-        filtered_codes = codes
-        filtered_returns = mean_ann_returns
-        filtered_cov = cov_np
+        # fallback → use ALL funds (avoid crash)
+        filtered_codes = codes.copy()
+        filtered_returns = mean_ann_returns.copy()
+        filtered_cov = cov_np.copy()
 
-    # ── Portfolio Metrics ──
+    # ── Portfolio Metrics (FULL portfolio, not filtered) ──
     try:
         p_ret, p_vol, p_sr = portfolio_metrics(weights, mean_ann_returns, cov_np)
     except Exception:
@@ -135,6 +138,7 @@ def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
     if total_cat > 0:
         category_weights = {k: v / total_cat for k, v in category_weights.items()}
 
+    # ── FINAL OUTPUT ──
     return {
         "funds": fund_stats,
         "weights": weights.tolist(),
@@ -144,10 +148,12 @@ def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
         "portfolio_volatility": round(p_vol, 4),
         "sharpe": round(p_sr, 4),
         "category_weights": {k: round(v, 4) for k, v in category_weights.items()},
+
+        # full data
         "mean_returns": mean_ann_returns.tolist(),
         "cov_matrix": cov_np.tolist(),
 
-        # 🔥 IMPORTANT: pass filtered data to optimizer
+        # filtered (used in optimizer ONLY)
         "filtered_codes": filtered_codes,
         "filtered_returns": filtered_returns.tolist(),
         "filtered_cov_matrix": filtered_cov.tolist(),
