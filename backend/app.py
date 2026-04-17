@@ -180,7 +180,11 @@ def analyze():
 
     except Exception as e:
         logger.error(traceback.format_exc())
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({
+           "status": "error",
+           "message": str(e),
+           "trace": traceback.format_exc()
+        }), 500
 
 
 @app.route("/api/reload", methods=["POST"])
