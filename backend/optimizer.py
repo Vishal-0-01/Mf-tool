@@ -1,43 +1,52 @@
 """
-optimizer.py — Efficient frontier with constraints + diversification control.
+optimizer.py — Efficient frontier with dynamic constraints + diversification control.
 """
 
 import numpy as np
 from scipy.optimize import minimize
 from utils import portfolio_metrics
 
-# ── CONFIG (FIXED) ─────────────────────────────────────────────
-MIN_WEIGHT = 0.05          # avoid zero allocation
-MAX_WEIGHT = 0.40          # prevent concentration
+# ── CONFIG ─────────────────────────────────────────────
 N_FRONTIER_POINTS = 30
-DIVERSIFICATION_PENALTY = 0.15  # higher = more spread
+DIVERSIFICATION_PENALTY = 0.15  # higher = more diversification
 
-# ───────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────
 
+
+def get_weight_bounds(n):
+    """
+    Dynamic bounds to avoid concentration + infeasibility
+    """
+    MIN_WEIGHT = 0.0
+    MAX_WEIGHT = min(0.40, 2.5 / n)  # adaptive cap
+    return MIN_WEIGHT, MAX_WEIGHT
+
+
+# ───────────────────────────────────────────────────────
 
 def _portfolio_volatility(weights, cov_matrix):
     return float(np.sqrt(weights @ cov_matrix @ weights))
 
 
 def _concentration_penalty(weights):
-    # penalizes large allocations (Herfindahl index)
     return np.sum(weights**2)
 
 
 def _neg_sharpe(weights, mean_returns, cov_matrix):
     ret, vol, sr = portfolio_metrics(weights, mean_returns, cov_matrix)
 
-    # 🚨 KEY FIX: penalize concentration
     penalty = _concentration_penalty(weights)
 
     return -(sr - DIVERSIFICATION_PENALTY * penalty)
 
 
-# ───────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────
 
 def _min_variance_portfolio(mean_returns, cov_matrix, n):
+    min_w, max_w = get_weight_bounds(n)
+
     constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-    bounds = tuple((MIN_WEIGHT, MAX_WEIGHT) for _ in range(n))
+    bounds = tuple((min_w, max_w) for _ in range(n))
     x0 = np.full(n, 1.0 / n)
 
     result = minimize(
@@ -53,8 +62,10 @@ def _min_variance_portfolio(mean_returns, cov_matrix, n):
 
 
 def _max_return_portfolio(mean_returns, n):
+    min_w, max_w = get_weight_bounds(n)
+
     constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-    bounds = tuple((MIN_WEIGHT, MAX_WEIGHT) for _ in range(n))
+    bounds = tuple((min_w, max_w) for _ in range(n))
     x0 = np.full(n, 1.0 / n)
 
     result = minimize(
@@ -69,12 +80,14 @@ def _max_return_portfolio(mean_returns, n):
 
 
 def _target_return_portfolio(target_ret, mean_returns, cov_matrix, n):
+    min_w, max_w = get_weight_bounds(n)
+
     constraints = [
         {"type": "eq", "fun": lambda w: np.sum(w) - 1.0},
         {"type": "eq", "fun": lambda w: np.dot(w, mean_returns) - target_ret},
     ]
 
-    bounds = tuple((MIN_WEIGHT, MAX_WEIGHT) for _ in range(n))
+    bounds = tuple((min_w, max_w) for _ in range(n))
     x0 = np.full(n, 1.0 / n)
 
     result = minimize(
@@ -89,7 +102,7 @@ def _target_return_portfolio(target_ret, mean_returns, cov_matrix, n):
     return result.x if result.success else None
 
 
-# ───────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────
 
 def generate_efficient_frontier(mean_returns, cov_matrix, codes, fund_names):
     mean_returns = np.array(mean_returns)
@@ -126,9 +139,11 @@ def generate_efficient_frontier(mean_returns, cov_matrix, codes, fund_names):
             "weights": {codes[i]: round(float(w[i]), 4) for i in range(n)},
         })
 
-    # ── Max Sharpe with penalty ─────────────────────────────
+    # ── Max Sharpe with diversification penalty ──
+    min_w, max_w = get_weight_bounds(n)
+
     constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-    bounds = tuple((MIN_WEIGHT, MAX_WEIGHT) for _ in range(n))
+    bounds = tuple((min_w, max_w) for _ in range(n))
     x0 = np.full(n, 1.0 / n)
 
     res = minimize(
@@ -156,7 +171,7 @@ def generate_efficient_frontier(mean_returns, cov_matrix, codes, fund_names):
     return frontier
 
 
-# ───────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────
 
 def build_optimal_portfolio(selected_point, macro_alloc, codes, fund_categories, fund_names):
     base_weights = selected_point["weights"]
@@ -179,7 +194,6 @@ def build_optimal_portfolio(selected_point, macro_alloc, codes, fund_categories,
 
         target_weight = target_frac * equity_pct
 
-        # proportional allocation
         raw = np.array([base_weights.get(m, 0.0) for m in members])
 
         if raw.sum() == 0:
@@ -190,11 +204,14 @@ def build_optimal_portfolio(selected_point, macro_alloc, codes, fund_categories,
         for i, m in enumerate(members):
             final_weights[m] = raw[i] * target_weight
 
-    # ── Clamp weights ─────────────────────────────
-    for k in final_weights:
-        final_weights[k] = max(MIN_WEIGHT, min(MAX_WEIGHT, final_weights[k]))
+    # ── Apply dynamic caps ──
+    n = len(final_weights)
+    min_w, max_w = get_weight_bounds(n)
 
-    # ── Normalize ─────────────────────────────
+    for k in final_weights:
+        final_weights[k] = min(max_w, max(0.0, final_weights[k]))
+
+    # normalize
     total = sum(final_weights.values())
     if total > 0:
         final_weights = {k: round(v / total, 4) for k, v in final_weights.items()}
@@ -202,7 +219,7 @@ def build_optimal_portfolio(selected_point, macro_alloc, codes, fund_categories,
     return final_weights
 
 
-# ───────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────
 
 def compute_actions(current_analysis, optimal_weights, fund_names, total_value):
     current_weights = {
