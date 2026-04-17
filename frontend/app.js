@@ -270,10 +270,10 @@ function renderDashboard(data) {
      <span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>`;
 
   // 🔥 CRITICAL — these were missing/breaking
-  renderDonut(curr.category_weights, opt.weights, data);
-  renderFrontier(data.frontier, data.selected_frontier_index, curr, opt);
-  renderActions(data.actions);
-  renderInsights(data.insights);
+  safe(() => renderDonut(curr.category_weights, opt.weights, data));
+  safe(() => renderFrontier(data.frontier, data.selected_frontier_index, curr, opt));
+  safe(() => renderActions(data.actions));
+  safe(() => renderInsights(data.insights));
 
   // slider
   const slider = document.getElementById("frontier-slider");
