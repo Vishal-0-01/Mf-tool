@@ -1,6 +1,6 @@
 /* app.js — MF Portfolio Analyzer frontend logic */
 
-// 🔥 FIXED: Proper backend resolution
+// ── API BASE (AUTO SWITCH LOCAL / PROD) ──
 const API_BASE =
   window.MF_API_BASE ||
   (window.location.hostname === "localhost"
@@ -18,51 +18,43 @@ let frontierChart = null;
 
 // ── Init ───────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
+  console.log("INIT START");
   await loadFunds();
   bindEvents();
 });
 
 async function loadFunds() {
   try {
+    console.log("Fetching funds...");
     const res = await fetch(`${API_BASE}/api/funds`);
     const data = await res.json();
+
+    if (data.status !== "ok") throw new Error("Bad response");
+
     fundUniverse = data.funds;
     renderFundList(fundUniverse);
+
+    console.log("Funds loaded");
   } catch (e) {
-    showError("Backend not reachable. Check Render deployment.");
+    showError("Backend not reachable.");
+    console.error(e);
   }
 }
 
 // ── Render fund list ───────────────────────────────────────────
-const CAT_DOTS = {
-  "Large Cap": "large",
-  "Flexi Cap": "flexi",
-  "Mid Cap": "mid",
-  "Small Cap": "small",
-  "Hybrid": "hybrid",
-};
-
 function renderFundList(universe) {
   const container = document.getElementById("fund-list-container");
+  if (!container) return;
+
   container.innerHTML = "";
 
   for (const [cat, funds] of Object.entries(universe)) {
     const block = document.createElement("div");
     block.className = "category-block";
 
-    const dotClass = CAT_DOTS[cat] || "large";
-
     const header = document.createElement("div");
     header.className = "cat-header";
-    header.innerHTML = `
-      <span class="cat-name">
-        <span class="cat-dot ${dotClass}"></span>
-        ${cat}
-      </span>
-      <div style="display:flex;gap:8px">
-        <span class="cat-count">${funds.length}</span>
-        <span class="cat-toggle">▶</span>
-      </div>`;
+    header.textContent = `${cat} (${funds.length})`;
 
     const list = document.createElement("div");
     list.className = "fund-list hidden";
@@ -110,6 +102,8 @@ function renderAmountInputs() {
   const container = document.getElementById("amount-inputs");
   const section = document.getElementById("amount-section");
 
+  if (!container || !section) return;
+
   if (selectedFunds.size === 0) {
     section.style.display = "none";
     return;
@@ -133,17 +127,21 @@ function renderAmountInputs() {
 
 // ── Events ─────────────────────────────────────────────────────
 function bindEvents() {
-  document.getElementById("btn-analyze").addEventListener("click", runAnalysis);
+  const btn = document.getElementById("btn-analyze");
+  if (btn) btn.addEventListener("click", runAnalysis);
 }
 
 // ── Analysis ───────────────────────────────────────────────────
 async function runAnalysis() {
+  console.log("RUN ANALYSIS CLICKED");
+
   if (selectedFunds.size < 3) {
     showError("Select at least 3 funds.");
     return;
   }
 
   const holdings = [];
+
   document.querySelectorAll("input[data-code]").forEach(inp => {
     const amt = parseFloat(inp.value);
     if (amt > 0) {
@@ -151,7 +149,14 @@ async function runAnalysis() {
     }
   });
 
+  if (holdings.length < 3) {
+    showError("Enter valid amounts for all funds.");
+    return;
+  }
+
   try {
+    showLoader(true);
+
     const res = await fetch(`${API_BASE}/api/analyze`, {
       method: "POST",
       headers: {
@@ -161,19 +166,63 @@ async function runAnalysis() {
     });
 
     const data = await res.json();
+    console.log("API RESPONSE:", data);
 
     if (data.status !== "ok") {
-      showError(data.message);
+      showError(data.message || "Analysis failed.");
       return;
     }
 
-    console.log("SUCCESS:", data);
+    renderDashboard(data);
+
   } catch (e) {
+    console.error(e);
     showError("Backend connection failed.");
+  } finally {
+    showLoader(false);
   }
+}
+
+// ── Render dashboard ───────────────────────────────────────────
+function renderDashboard(data) {
+  console.log("RENDERING DASHBOARD");
+
+  const dash = document.getElementById("dashboard");
+  const empty = document.getElementById("empty-state");
+
+  if (empty) empty.style.display = "none";
+  if (dash) dash.style.display = "block";
+
+  // Minimal render first (avoid crash)
+  if (!dash) {
+    alert("Dashboard container missing in HTML");
+    return;
+  }
+
+  dash.innerHTML = `
+    <h3>Optimal Portfolio</h3>
+    <pre>${JSON.stringify(data.optimal_portfolio, null, 2)}</pre>
+
+    <h3>Actions</h3>
+    <pre>${JSON.stringify(data.actions, null, 2)}</pre>
+  `;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
 function showError(msg) {
-  console.error(msg);
+  console.error("ERROR:", msg);
+
+  const el = document.getElementById("error-banner");
+
+  if (el) {
+    el.textContent = msg;
+    el.classList.add("visible");
+  } else {
+    alert(msg);
+  }
+}
+
+function showLoader(show) {
+  const el = document.getElementById("loader");
+  if (el) el.style.display = show ? "block" : "none";
 }
