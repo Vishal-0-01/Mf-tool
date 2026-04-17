@@ -1,6 +1,6 @@
 """
 optimizer.py — Efficient frontier via mean-variance optimization using scipy.
-FINAL FIXED VERSION
+FINAL STABLE VERSION (NO FUND DROPPING)
 """
 
 import numpy as np
@@ -117,7 +117,7 @@ def generate_efficient_frontier(mean_returns, cov_matrix, codes, fund_names):
             "weights": {codes[i]: round(float(w[i]), 4) for i in range(n)},
         })
 
-    # Max Sharpe
+    # Max Sharpe portfolio
     constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
     bounds = tuple((MIN_WEIGHT, MAX_WEIGHT) for _ in range(n))
     x0 = np.full(n, 1.0 / n)
@@ -148,28 +148,32 @@ def generate_efficient_frontier(mean_returns, cov_matrix, codes, fund_names):
 
 
 # ─────────────────────────────────────────────────────────────
-# FINAL FIXED FUNCTION
+# FINAL FIXED ALLOCATION ENGINE
 # ─────────────────────────────────────────────────────────────
 def build_optimal_portfolio(selected_frontier_point, macro_alloc, codes, fund_categories, fund_names):
     base_weights = dict(selected_frontier_point["weights"])
     category_splits = macro_alloc["category_splits"]
     equity_pct = macro_alloc["equity_pct"]
 
-    # ── Group funds by category (with fallback)
-    cat_codes = {}
-    unknown_codes = []
+    final_weights = {}
 
+    # STEP 1: Assign valid category to ALL funds
+    adjusted_categories = {}
     for code in codes:
         cat = fund_categories.get(code)
 
         if cat not in category_splits:
-            unknown_codes.append(code)
-        else:
-            cat_codes.setdefault(cat, []).append(code)
+            # fallback → don't lose fund
+            cat = "Flexi Cap"
 
-    final_weights = {}
+        adjusted_categories[code] = cat
 
-    # ── Allocate category weights
+    # STEP 2: Group funds
+    cat_codes = {}
+    for code, cat in adjusted_categories.items():
+        cat_codes.setdefault(cat, []).append(code)
+
+    # STEP 3: Allocate category weights
     for cat, target_frac in category_splits.items():
         members = cat_codes.get(cat, [])
         if not members:
@@ -183,15 +187,17 @@ def build_optimal_portfolio(selected_frontier_point, macro_alloc, codes, fund_ca
         for c in members:
             final_weights[c] = raw[c] / raw_sum * target_w
 
-    # ── Allocate UNKNOWN funds (critical fix)
-    if unknown_codes:
-        remaining_weight = 1.0 - sum(final_weights.values())
-        equal_w = remaining_weight / len(unknown_codes)
+    # STEP 4: Preserve leftover weight (CRITICAL FIX)
+    assigned_weight = sum(final_weights.values())
+    leftover = 1.0 - assigned_weight
 
-        for c in unknown_codes:
-            final_weights[c] = equal_w
+    if leftover > 0:
+        total_base = sum(base_weights.values()) or 1.0
 
-    # ── Normalize
+        for c in base_weights:
+            final_weights[c] = final_weights.get(c, 0) + (base_weights[c] / total_base) * leftover
+
+    # STEP 5: Normalize
     total = sum(final_weights.values())
     if total > 0:
         for c in final_weights:
@@ -201,7 +207,7 @@ def build_optimal_portfolio(selected_frontier_point, macro_alloc, codes, fund_ca
 
 
 # ─────────────────────────────────────────────────────────────
-# Actions
+# Actions Engine
 # ─────────────────────────────────────────────────────────────
 def compute_actions(current_analysis, optimal_weights, fund_names, total_value):
     current_weights = {
