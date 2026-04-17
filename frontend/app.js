@@ -443,3 +443,55 @@ async function reoptimizeWithSelected() {
     showError("Reoptimization failed.");
   }
 }
+// ── FALLBACK UI FUNCTIONS (RESTORE MISSING ONES) ──
+
+// Donut (category allocation)
+function renderDonut(categoryWeights) {
+  const el = document.getElementById("donut-chart");
+  if (!el) return;
+
+  el.innerHTML = Object.entries(categoryWeights)
+    .map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`)
+    .join("<br>");
+}
+
+// Frontier (simple table instead of chart)
+function renderFrontier(frontier) {
+  const el = document.getElementById("frontier-chart");
+  if (!el) return;
+
+  el.innerHTML = frontier
+    .slice(0, 5)
+    .map(p => `Vol: ${(p.volatility*100).toFixed(1)} | Ret: ${(p.return*100).toFixed(1)}`)
+    .join("<br>");
+}
+
+// Actions table
+function renderActions(actionData) {
+  const tbody = document.getElementById("actions-tbody");
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+
+  actionData.actions.forEach(a => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${a.name}</td>
+      <td>${(a.current_weight*100).toFixed(1)}%</td>
+      <td>${(a.optimal_weight*100).toFixed(1)}%</td>
+      <td>${(a.delta*100).toFixed(1)}%</td>
+      <td>${a.action}</td>
+      <td>₹${a.amount_change}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// Insights
+function renderInsights(insights) {
+  const el = document.getElementById("insights-list");
+  if (!el) return;
+
+  el.innerHTML = insights.map(i => `<div>${i}</div>`).join("");
+}
+
