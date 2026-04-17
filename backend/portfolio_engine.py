@@ -17,6 +17,9 @@ from utils import (
 from data_fetcher import FUND_UNIVERSE
 
 
+MIN_DATA_POINTS = 30  # critical threshold
+
+
 # ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
@@ -31,10 +34,6 @@ def get_fund_meta(scheme_code: str) -> dict:
 # Portfolio Analysis
 # ─────────────────────────────────────────────
 def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
-    """
-    holdings: [{"scheme_code": str, "amount": float}, ...]
-    Returns current portfolio analysis dict.
-    """
 
     if not holdings:
         raise ValueError("No holdings provided")
@@ -59,17 +58,20 @@ def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
     # ── Fund-level stats ──
     fund_stats = []
     mean_ann_returns = []
+    valid_mask = []
 
     for i, code in enumerate(codes):
         dr = returns_df[code].dropna() if code in returns_df.columns else pd.Series(dtype=float)
 
-        if len(dr) > 1:
+        if len(dr) >= MIN_DATA_POINTS:
             ann_ret = annualized_return(dr)
             ann_vol = annualized_volatility(dr)
             sr = sharpe_ratio(ann_ret, ann_vol)
             so = sortino_ratio(dr, ann_ret)
+            valid = True
         else:
             ann_ret, ann_vol, sr, so = 0.0, 0.0, 0.0, 0.0
+            valid = False
 
         meta = get_fund_meta(code)
 
@@ -86,30 +88,41 @@ def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
         })
 
         mean_ann_returns.append(ann_ret)
+        valid_mask.append(valid)
 
     mean_ann_returns = np.array(mean_ann_returns)
+    valid_mask = np.array(valid_mask)
 
     # ── Covariance Matrix ──
     cov = covariance_matrix(returns_df.reindex(columns=codes))
     cov_np = cov.values
-
-    # 🔥 FULL NaN HANDLING (critical fix)
     cov_np = np.nan_to_num(cov_np, nan=0.0)
 
-    # Ensure diagonal stability
     for i in range(len(codes)):
         if cov_np[i, i] <= 0:
             dr = returns_df[codes[i]].dropna() if codes[i] in returns_df else pd.Series()
             if len(dr) > 1:
                 cov_np[i, i] = (dr.std() ** 2) * 252
             else:
-                cov_np[i, i] = 0.04  # fallback (20% vol)
+                cov_np[i, i] = 0.04
+
+    # ── FILTER INVALID FUNDS (CRITICAL FIX) ──
+    valid_indices = np.where(valid_mask)[0]
+
+    if len(valid_indices) >= 2:
+        filtered_codes = [codes[i] for i in valid_indices]
+        filtered_returns = mean_ann_returns[valid_indices]
+        filtered_cov = cov_np[np.ix_(valid_indices, valid_indices)]
+    else:
+        # fallback: avoid crash
+        filtered_codes = codes
+        filtered_returns = mean_ann_returns
+        filtered_cov = cov_np
 
     # ── Portfolio Metrics ──
     try:
         p_ret, p_vol, p_sr = portfolio_metrics(weights, mean_ann_returns, cov_np)
     except Exception:
-        # fallback safe values
         p_ret, p_vol, p_sr = 0.0, 0.0, 0.0
 
     # ── Category Breakdown ──
@@ -118,7 +131,6 @@ def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
         cat = fs["category"]
         category_weights[cat] = category_weights.get(cat, 0) + float(weights[i])
 
-    # Normalize category weights (safety)
     total_cat = sum(category_weights.values())
     if total_cat > 0:
         category_weights = {k: v / total_cat for k, v in category_weights.items()}
@@ -134,6 +146,11 @@ def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
         "category_weights": {k: round(v, 4) for k, v in category_weights.items()},
         "mean_returns": mean_ann_returns.tolist(),
         "cov_matrix": cov_np.tolist(),
+
+        # 🔥 IMPORTANT: pass filtered data to optimizer
+        "filtered_codes": filtered_codes,
+        "filtered_returns": filtered_returns.tolist(),
+        "filtered_cov_matrix": filtered_cov.tolist(),
     }
 
 
@@ -141,9 +158,6 @@ def analyze_current_portfolio(holdings: list, nav_data: dict) -> dict:
 # Macro Allocation
 # ─────────────────────────────────────────────
 def macro_equity_allocation(pe: float, pb: float) -> dict:
-    """
-    Compute equity allocation % and category splits from PE/PB z-scores.
-    """
 
     PE_MEAN, PE_STD = 22.0, 5.0
     PB_MEAN, PB_STD = 3.2, 0.7
@@ -152,23 +166,19 @@ def macro_equity_allocation(pe: float, pb: float) -> dict:
     z_pb = (pb - PB_MEAN) / PB_STD
     z = (z_pe + z_pb) / 2.0
 
-    # Clamp z
     z_clamped = max(-2.0, min(2.0, z))
 
-    # Equity allocation
     equity_pct = 0.70 - (z_clamped / 2.0) * 0.20
     equity_pct = max(0.50, min(0.90, equity_pct))
 
-    # Category tilts
     large_w = 0.35 + z_clamped * 0.03
     small_w = 0.15 - z_clamped * 0.03
     mid_w   = 0.25 - z_clamped * 0.01
     flexi_w = 0.25 - z_clamped * 0.01
 
     total_eq = large_w + flexi_w + mid_w + small_w
-
     if total_eq == 0:
-        total_eq = 1.0  # safety
+        total_eq = 1.0
 
     cat_splits = {
         "Large Cap": round(large_w / total_eq, 4),
