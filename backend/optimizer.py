@@ -1,14 +1,16 @@
 """
 optimizer.py — Efficient frontier via mean-variance optimization using scipy.
-FINAL STABLE VERSION (NO FUND DROPPING)
+FINAL STABLE + CONSTRAINED VERSION
 """
 
 import numpy as np
 from scipy.optimize import minimize
 from utils import portfolio_metrics
 
-MIN_WEIGHT = 0.00
-MAX_WEIGHT = 1.00
+
+# 🔥 REALISTIC CONSTRAINTS (KEY FIX)
+MIN_WEIGHT = 0.05     # prevents zero allocation
+MAX_WEIGHT = 0.40     # prevents concentration
 N_FRONTIER_POINTS = 30
 
 
@@ -39,6 +41,7 @@ def _min_variance_portfolio(mean_returns, cov_matrix, n):
         method="SLSQP",
         bounds=bounds,
         constraints=constraints,
+        options={"maxiter": 500}
     )
     return res.x if res.success else x0
 
@@ -54,6 +57,7 @@ def _max_return_portfolio(mean_returns, n):
         method="SLSQP",
         bounds=bounds,
         constraints=constraints,
+        options={"maxiter": 500}
     )
     return res.x if res.success else x0
 
@@ -73,6 +77,7 @@ def _target_return_portfolio(target_ret, mean_returns, cov_matrix, n):
         method="SLSQP",
         bounds=bounds,
         constraints=constraints,
+        options={"maxiter": 500}
     )
 
     if res.success and abs(np.sum(res.x) - 1.0) < 1e-4:
@@ -88,7 +93,7 @@ def generate_efficient_frontier(mean_returns, cov_matrix, codes, fund_names):
     cov_matrix = np.array(cov_matrix)
     n = len(mean_returns)
 
-    if n < 3:
+    if n < 2:
         return []
 
     w_min = _min_variance_portfolio(mean_returns, cov_matrix, n)
@@ -117,7 +122,7 @@ def generate_efficient_frontier(mean_returns, cov_matrix, codes, fund_names):
             "weights": {codes[i]: round(float(w[i]), 4) for i in range(n)},
         })
 
-    # Max Sharpe portfolio
+    # ── Max Sharpe portfolio ──
     constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
     bounds = tuple((MIN_WEIGHT, MAX_WEIGHT) for _ in range(n))
     x0 = np.full(n, 1.0 / n)
@@ -129,6 +134,7 @@ def generate_efficient_frontier(mean_returns, cov_matrix, codes, fund_names):
         method="SLSQP",
         bounds=bounds,
         constraints=constraints,
+        options={"maxiter": 500}
     )
 
     if res.success:
@@ -148,7 +154,7 @@ def generate_efficient_frontier(mean_returns, cov_matrix, codes, fund_names):
 
 
 # ─────────────────────────────────────────────────────────────
-# FINAL FIXED ALLOCATION ENGINE
+# Allocation Engine (FIXED)
 # ─────────────────────────────────────────────────────────────
 def build_optimal_portfolio(selected_frontier_point, macro_alloc, codes, fund_categories, fund_names):
     base_weights = dict(selected_frontier_point["weights"])
@@ -157,47 +163,46 @@ def build_optimal_portfolio(selected_frontier_point, macro_alloc, codes, fund_ca
 
     final_weights = {}
 
-    # STEP 1: Assign valid category to ALL funds
+    # Assign categories safely
     adjusted_categories = {}
     for code in codes:
         cat = fund_categories.get(code)
-
         if cat not in category_splits:
-            # fallback → don't lose fund
             cat = "Flexi Cap"
-
         adjusted_categories[code] = cat
 
-    # STEP 2: Group funds
+    # Group funds
     cat_codes = {}
     for code, cat in adjusted_categories.items():
         cat_codes.setdefault(cat, []).append(code)
 
-    # STEP 3: Allocate category weights
+    # Allocate per category
     for cat, target_frac in category_splits.items():
         members = cat_codes.get(cat, [])
         if not members:
             continue
 
         target_w = target_frac * equity_pct
-
         raw = {c: base_weights.get(c, 1.0 / len(members)) for c in members}
         raw_sum = sum(raw.values()) or 1.0
 
         for c in members:
             final_weights[c] = raw[c] / raw_sum * target_w
 
-    # STEP 4: Preserve leftover weight (CRITICAL FIX)
-    assigned_weight = sum(final_weights.values())
-    leftover = 1.0 - assigned_weight
+    # Fill leftover weight
+    assigned = sum(final_weights.values())
+    leftover = max(0.0, 1.0 - assigned)
 
     if leftover > 0:
         total_base = sum(base_weights.values()) or 1.0
-
         for c in base_weights:
             final_weights[c] = final_weights.get(c, 0) + (base_weights[c] / total_base) * leftover
 
-    # STEP 5: Normalize
+    # 🔥 FINAL SAFETY: enforce caps again
+    for c in final_weights:
+        final_weights[c] = max(MIN_WEIGHT, min(MAX_WEIGHT, final_weights[c]))
+
+    # Normalize
     total = sum(final_weights.values())
     if total > 0:
         for c in final_weights:
