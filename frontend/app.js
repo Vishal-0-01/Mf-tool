@@ -1,6 +1,6 @@
 /* app.js — MF Portfolio Analyzer frontend logic */
 
-// ✅ FIX 1: Correct backend URL (critical)
+// Backend URL
 const API_BASE =
   window.MF_API_BASE ||
   (window.location.hostname === "localhost"
@@ -22,74 +22,39 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
 });
 
+// ── Load Funds ─────────────────────────────────────────────────
 async function loadFunds() {
   try {
     const res = await fetch(`${API_BASE}/api/funds`);
     const data = await res.json();
-
-    if (!data || data.status !== "ok") {
-      throw new Error("Invalid backend response");
-    }
-
     fundUniverse = data.funds;
     renderFundList(fundUniverse);
-
   } catch (e) {
-    console.error(e);
-    showError("Backend not reachable. Check Render.");
+    showError("Backend not reachable.");
   }
 }
 
 // ── Render fund list ───────────────────────────────────────────
-const CAT_DOTS = {
-  "Large Cap": "large",
-  "Flexi Cap": "flexi",
-  "Mid Cap": "mid",
-  "Small Cap": "small",
-  "Hybrid": "hybrid",
-};
-
 function renderFundList(universe) {
   const container = document.getElementById("fund-list-container");
-  if (!container) return;
-
   container.innerHTML = "";
 
   for (const [cat, funds] of Object.entries(universe)) {
     const block = document.createElement("div");
-    block.className = "category-block";
-    block.dataset.category = cat;
-
-    const dotClass = CAT_DOTS[cat] || "large";
 
     const header = document.createElement("div");
-    header.className = "cat-header";
-    header.innerHTML = `
-      <span class="cat-name">
-        <span class="cat-dot ${dotClass}"></span>
-        ${cat}
-      </span>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span class="cat-count">${funds.length}</span>
-        <span class="cat-toggle">▶</span>
-      </div>`;
+    header.innerHTML = `<b>${cat}</b> (${funds.length})`;
 
     const list = document.createElement("div");
-    list.className = "fund-list hidden";
+    list.style.display = "none";
 
     funds.forEach(fund => {
       const item = document.createElement("div");
-      item.className = "fund-item";
-      item.dataset.code = fund.scheme_code;
-      item.dataset.name = fund.name.toLowerCase();
 
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.className = "fund-cb";
-      cb.dataset.code = fund.scheme_code;
 
       const label = document.createElement("span");
-      label.className = "fund-name";
       label.textContent = fund.name;
 
       item.appendChild(cb);
@@ -97,16 +62,14 @@ function renderFundList(universe) {
 
       item.addEventListener("click", (e) => {
         if (e.target !== cb) cb.checked = !cb.checked;
-        toggleFund(fund.scheme_code, fund.name, cb.checked);
+        toggleFund(fund.scheme_code, cb.checked);
       });
 
       list.appendChild(item);
     });
 
     header.addEventListener("click", () => {
-      const toggle = header.querySelector(".cat-toggle");
-      list.classList.toggle("hidden");
-      toggle.classList.toggle("open");
+      list.style.display = list.style.display === "none" ? "block" : "none";
     });
 
     block.appendChild(header);
@@ -115,24 +78,16 @@ function renderFundList(universe) {
   }
 }
 
-function toggleFund(code, name, checked) {
-  const item = document.querySelector(`.fund-item[data-code="${code}"]`);
-  if (checked) {
-    selectedFunds.add(code);
-    item?.classList.add("selected");
-  } else {
-    selectedFunds.delete(code);
-    item?.classList.remove("selected");
-  }
+function toggleFund(code, checked) {
+  if (checked) selectedFunds.add(code);
+  else selectedFunds.delete(code);
   renderAmountInputs();
 }
 
-// ── Amount inputs ──────────────────────────────────────────────
+// ── Amount Inputs ──────────────────────────────────────────────
 function renderAmountInputs() {
   const container = document.getElementById("amount-inputs");
   const section = document.getElementById("amount-section");
-
-  if (!container || !section) return;
 
   if (selectedFunds.size === 0) {
     section.style.display = "none";
@@ -143,155 +98,130 @@ function renderAmountInputs() {
   container.innerHTML = "";
 
   for (const code of selectedFunds) {
-    const fund = findFund(code);
-
     const row = document.createElement("div");
-    row.className = "amount-row";
-
-    const lbl = document.createElement("div");
-    lbl.className = "amount-label";
-    lbl.textContent = fund ? fund.name : code;
 
     const inp = document.createElement("input");
     inp.type = "number";
-    inp.className = "amount-input";
     inp.placeholder = "₹ amount";
     inp.dataset.code = code;
 
-    row.appendChild(lbl);
     row.appendChild(inp);
     container.appendChild(row);
   }
 }
 
-function findFund(code) {
-  for (const funds of Object.values(fundUniverse)) {
-    const f = funds.find(f => f.scheme_code === code);
-    if (f) return f;
-  }
-  return null;
-}
-
 // ── Events ─────────────────────────────────────────────────────
 function bindEvents() {
-  document.getElementById("btn-analyze")?.addEventListener("click", runAnalysis);
-
-  document.getElementById("frontier-slider")?.addEventListener("input", function () {
-    frontierIndex = parseInt(this.value);
-    updateFrontierHighlight();
-  });
-
-  document.getElementById("btn-reoptimize")?.addEventListener("click", reoptimizeWithSelected);
+  document.getElementById("btn-analyze").addEventListener("click", runAnalysis);
 }
 
 // ── Analysis ───────────────────────────────────────────────────
 async function runAnalysis() {
-  console.log("ANALYZE CLICKED");
-
   clearError();
 
   if (selectedFunds.size < 3) {
-    showError("Please select at least 3 funds.");
+    showError("Select at least 3 funds.");
     return;
   }
 
   const holdings = [];
-  let valid = true;
 
-  document.querySelectorAll(".amount-input").forEach(inp => {
+  document.querySelectorAll("input[data-code]").forEach(inp => {
     const amt = parseFloat(inp.value);
-    if (!amt || amt <= 0) {
-      valid = false;
-      inp.style.borderColor = "var(--sell)";
-    } else {
-      inp.style.borderColor = "";
-      holdings.push({ scheme_code: inp.dataset.code, amount: amt });
+    if (amt > 0) {
+      holdings.push({
+        scheme_code: inp.dataset.code,
+        amount: amt
+      });
     }
   });
 
-  if (!valid) {
-    showError("Enter valid amount for all funds.");
+  if (holdings.length < 3) {
+    showError("Enter valid amounts for all funds.");
     return;
   }
 
   try {
-    showLoader(true);
+    console.log("ANALYZE CLICKED");
 
     const res = await fetch(`${API_BASE}/api/analyze`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ holdings }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ holdings })
     });
 
     const data = await res.json();
+
     console.log("API RESPONSE:", data);
 
-    if (!data || data.status !== "ok") {
-      showError(data?.message || "Analysis failed.");
+    if (data.status !== "ok") {
+      showError(data.message || "Analysis failed.");
       return;
     }
 
-    frontier = data.frontier || [];
-    frontierIndex = data.selected_frontier_index ?? 0;
+    frontier = data.frontier;
+    frontierIndex = data.selected_frontier_index;
 
     renderDashboard(data);
 
   } catch (e) {
     console.error(e);
-    showError("Network error.");
-  } finally {
-    showLoader(false);
+    showError("Something broke. Check console.");
   }
 }
 
-// ── Dashboard ──────────────────────────────────────────────────
+// ── Dashboard Render ───────────────────────────────────────────
 function renderDashboard(data) {
-  const dash = document.getElementById("dashboard");
-  const empty = document.getElementById("empty-state");
-
-  if (!dash) {
-    console.error("Dashboard missing");
-    return;
-  }
-
-  if (empty) empty.style.display = "none";
-  dash.style.display = "flex";
-
   const curr = data.current_portfolio;
   const opt = data.optimal_portfolio;
 
-  setMetric("m-ret-curr", pct(curr.portfolio_return));
+  // Metrics
+  setMetric("m-ret-curr", pct(curr.portfolio_return), true);
   setMetric("m-vol-curr", pct(curr.portfolio_volatility));
   setMetric("m-sr-curr", curr.sharpe.toFixed(2));
-  setMetric("m-ret-opt", pct(opt.return));
+
+  setMetric("m-ret-opt", pct(opt.return), true);
   setMetric("m-vol-opt", pct(opt.volatility));
   setMetric("m-sr-opt", opt.sharpe.toFixed(2));
 
-  renderDonut(curr.category_weights, opt.weights, data);
-  renderFrontier(data.frontier, data.selected_frontier_index, curr, opt);
-  renderActions(data.actions);
   renderInsights(data.insights);
 }
 
-// ── Helpers ────────────────────────────────────────────────────
-function pct(v) { return (v * 100).toFixed(1) + "%"; }
-function fmt(v) { return v.toLocaleString("en-IN", { maximumFractionDigits: 0 }); }
+// ── Insights ───────────────────────────────────────────────────
+function renderInsights(insights) {
+  const el = document.getElementById("insights-list");
+  if (!el) return;
+  el.innerHTML = insights.map(i => `<div>${i}</div>`).join("");
+}
+
+// ── Helpers (FIXED MISSING FUNCTIONS) ──────────────────────────
+function setMetric(id, value, positive) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  el.textContent = value;
+
+  if (positive === true) el.style.color = "#4fffb0";
+  else if (positive === false) el.style.color = "#ff5f72";
+  else el.style.color = "#e8ecf4";
+}
+
+function pct(v) {
+  return (v * 100).toFixed(1) + "%";
+}
 
 function showError(msg) {
   console.error(msg);
   const el = document.getElementById("error-banner");
   if (el) {
     el.textContent = msg;
-    el.classList.add("visible");
-  } else {
-    alert(msg);
+    el.style.display = "block";
   }
 }
 
 function clearError() {
-  document.getElementById("error-banner")?.classList.remove("visible");
-}
-
-function showLoader(show) {
-  document.getElementById("loader")?.classList.toggle("visible", show);
+  const el = document.getElementById("error-banner");
+  if (el) el.style.display = "none";
 }
