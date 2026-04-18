@@ -495,3 +495,63 @@ function renderInsights(insights) {
   el.innerHTML = insights.map(i => `<div>${i}</div>`).join("");
 }
 
+// ─────────────────────────────────────────────
+// MISSING FUNCTION FIXES (DO NOT TOUCH ABOVE)
+// ─────────────────────────────────────────────
+
+// Prevent slider crash
+function updateFrontierHighlight() {
+  if (!frontier || !frontier.length) return;
+
+  const sel = frontier[frontierIndex];
+  if (!sel) return;
+
+  console.log("Selected frontier point:", sel);
+
+  // If chart exists → update
+  if (window.frontierChart && window.frontierChart.data?.datasets?.[1]) {
+    window.frontierChart.data.datasets[1].data = [{
+      x: +(sel.volatility * 100).toFixed(2),
+      y: +(sel.return * 100).toFixed(2),
+    }];
+    window.frontierChart.update();
+  }
+}
+
+// Prevent reoptimize crash
+async function reoptimizeWithSelected() {
+  if (!frontier.length) return;
+
+  const holdings = [];
+  document.querySelectorAll("input[data-code]").forEach(inp => {
+    const amt = parseFloat(inp.value);
+    if (amt > 0) {
+      holdings.push({ scheme_code: inp.dataset.code, amount: amt });
+    }
+  });
+
+  try {
+    const res = await fetch(`${API_BASE}/api/analyze`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        holdings,
+        frontier_index: frontierIndex
+      }),
+    });
+
+    const data = await res.json();
+
+    if (data.status === "ok") {
+      renderDashboard(data);
+    } else {
+      showError(data.message || "Reoptimize failed");
+    }
+  } catch (e) {
+    console.error(e);
+    showError("Reoptimize failed");
+  }
+}
+
