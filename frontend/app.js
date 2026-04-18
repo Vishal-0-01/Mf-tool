@@ -10,6 +10,7 @@ const API_BASE =
 // ── State ──────────────────────────────────────────────────────
 let fundUniverse = {};
 let selectedFunds = new Set();
+let fundAmounts = {};  // 🔥 persists amounts
 let frontier = [];
 let frontierIndex = null;
 
@@ -179,6 +180,9 @@ function toggleFund(code, name, checked) {
   } else {
     selectedFunds.delete(code);
     item?.classList.remove("selected");
+    // 🔥 remove stale amount
+    delete fundAmounts[code];
+    
   }
   renderAmountInputs();
 }
@@ -210,8 +214,18 @@ function renderAmountInputs() {
 
     const inp = document.createElement("input");
     inp.type = "number";
-    inp.className = "amount-input";
     inp.placeholder = "₹ amount";
+    inp.dataset.code = code;
+
+    // 🔥 restore old value if exists
+    if (fundAmounts[code]) {
+      inp.value = fundAmounts[code];
+    }
+
+// 🔥 save on change
+    inp.addEventListener("input", () => {
+    fundAmounts[code] = inp.value;
+    });
     inp.dataset.code = code;
 
     row.appendChild(lbl);
@@ -277,8 +291,15 @@ async function runAnalysis() {
   const holdings = [];
   let valid = true;
 
-  document.querySelectorAll(".amount-input").forEach(inp => {
-    const amt = parseFloat(inp.value);
+  for (const code of selectedFunds) {
+  const amt = parseFloat(fundAmounts[code]);
+
+  if (!amt || amt <= 0) {
+    valid = false;
+  } else {
+    holdings.push({ scheme_code: code, amount: amt });
+  }
+}
     if (!amt || amt <= 0) {
       valid = false;
       inp.style.borderColor = "var(--sell)";
