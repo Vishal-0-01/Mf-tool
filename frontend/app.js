@@ -1,6 +1,6 @@
 /* app.js — MF Portfolio Analyzer frontend logic */
 
-// ✅ FIX 1: Correct backend URL (critical)
+// ✅ Backend URL
 const API_BASE =
   window.MF_API_BASE ||
   (window.location.hostname === "localhost"
@@ -10,58 +10,16 @@ const API_BASE =
 // ── State ──────────────────────────────────────────────────────
 let fundUniverse = {};
 let selectedFunds = new Set();
-let fundAmounts = {};  // persists amounts
+let fundAmounts = {};
 let frontier = [];
 let frontierIndex = null;
 
 let donutChart = null;
 let frontierChart = null;
 
-// ── GLOBAL HELPERS ─────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────
 function safe(fn) {
   try { fn(); } catch (e) { console.error("UI crash:", e); }
-}
-
-// ✅ SINGLE SOURCE OF TRUTH (FIXED)
-async function reoptimizeWithSelected() {
-  if (!frontier.length) return;
-
-  const holdings = [];
-
-  for (const code of selectedFunds) {
-    const amt = parseFloat(fundAmounts[code]);
-    if (amt > 0) {
-      holdings.push({ scheme_code: code, amount: amt });
-    }
-  }
-
-  if (holdings.length < 3) {
-    showError("Need valid amounts for reoptimization.");
-    return;
-  }
-
-  try {
-    const res = await fetch(`${API_BASE}/api/analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        holdings,
-        frontier_index: frontierIndex
-      })
-    });
-
-    const data = await res.json();
-
-    if (data.status === "ok") {
-      renderDashboard(data);
-    } else {
-      showError(data.message || "Reoptimization failed.");
-    }
-
-  } catch (e) {
-    console.error(e);
-    showError("Reoptimization failed.");
-  }
 }
 
 // ── Init ───────────────────────────────────────────────────────
@@ -70,25 +28,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
 });
 
+// ── Load Funds ─────────────────────────────────────────────────
 async function loadFunds() {
   try {
     const res = await fetch(`${API_BASE}/api/funds`);
     const data = await res.json();
 
-    if (!data || data.status !== "ok") {
-      throw new Error("Invalid backend response");
-    }
+    if (!data || data.status !== "ok") throw new Error("Invalid backend");
 
     fundUniverse = data.funds;
     renderFundList(fundUniverse);
 
   } catch (e) {
     console.error(e);
-    showError("Backend not reachable. Check Render.");
+    showError("Backend not reachable.");
   }
 }
 
-// ── Render fund list ───────────────────────────────────────────
+// ── Render Funds ───────────────────────────────────────────────
 const CAT_DOTS = {
   "Large Cap": "large",
   "Flexi Cap": "flexi",
@@ -110,8 +67,12 @@ function renderFundList(universe) {
     const header = document.createElement("div");
     header.className = "cat-header";
     header.innerHTML = `
-      <span class="cat-name">${cat}</span>
-      <span class="cat-toggle">▶</span>`;
+      <span class="cat-name">
+        <span class="cat-dot ${CAT_DOTS[cat] || "large"}"></span>
+        ${cat}
+      </span>
+      <span class="cat-count">${funds.length}</span>
+    `;
 
     const list = document.createElement("div");
     list.className = "fund-list hidden";
@@ -133,15 +94,13 @@ function renderFundList(universe) {
 
       item.addEventListener("click", (e) => {
         if (e.target !== cb) cb.checked = !cb.checked;
-        toggleFund(fund.scheme_code, fund.name, cb.checked);
+        toggleFund(fund.scheme_code, cb.checked);
       });
 
       list.appendChild(item);
     });
 
-    header.addEventListener("click", () => {
-      list.classList.toggle("hidden");
-    });
+    header.onclick = () => list.classList.toggle("hidden");
 
     block.appendChild(header);
     block.appendChild(list);
@@ -149,29 +108,24 @@ function renderFundList(universe) {
   }
 }
 
-function toggleFund(code, name, checked) {
-  const item = document.querySelector(`.fund-item[data-code="${code}"]`);
-
-  if (checked) {
-    selectedFunds.add(code);
-    item?.classList.add("selected");
-  } else {
+// ── Selection ──────────────────────────────────────────────────
+function toggleFund(code, checked) {
+  if (checked) selectedFunds.add(code);
+  else {
     selectedFunds.delete(code);
-    item?.classList.remove("selected");
     delete fundAmounts[code];
   }
-
   renderAmountInputs();
 }
 
-// ── Amount inputs ──────────────────────────────────────────────
+// ── Amounts ───────────────────────────────────────────────────
 function renderAmountInputs() {
   const container = document.getElementById("amount-inputs");
   const section = document.getElementById("amount-section");
 
   if (!container || !section) return;
 
-  if (selectedFunds.size === 0) {
+  if (!selectedFunds.size) {
     section.style.display = "none";
     return;
   }
@@ -180,12 +134,7 @@ function renderAmountInputs() {
   container.innerHTML = "";
 
   for (const code of selectedFunds) {
-    const fund = findFund(code);
-
     const row = document.createElement("div");
-
-    const lbl = document.createElement("div");
-    lbl.textContent = fund ? fund.name : code;
 
     const inp = document.createElement("input");
     inp.type = "number";
@@ -199,62 +148,36 @@ function renderAmountInputs() {
       fundAmounts[code] = inp.value;
     });
 
-    row.appendChild(lbl);
     row.appendChild(inp);
     container.appendChild(row);
   }
-}
-
-function findFund(code) {
-  for (const funds of Object.values(fundUniverse)) {
-    const f = funds.find(f => f.scheme_code === code);
-    if (f) return f;
-  }
-  return null;
 }
 
 // ── Events ─────────────────────────────────────────────────────
 function bindEvents() {
   document.getElementById("btn-analyze")?.addEventListener("click", runAnalysis);
 
-  document.getElementById("btn-reoptimize")?.addEventListener("click", reoptimizeWithSelected);
-
-  document.getElementById("frontier-slider")?.addEventListener("input", function () {
-    frontierIndex = parseInt(this.value);
+  document.getElementById("frontier-slider")?.addEventListener("input", e => {
+    frontierIndex = parseInt(e.target.value);
     updateFrontierHighlight();
   });
 
-  // ✅ RESTORE SEARCH (this is what broke)
+  document.getElementById("btn-reoptimize")?.addEventListener("click", reoptimizeWithSelected);
+
+  // SEARCH (fixed placement)
   document.getElementById("fund-search")?.addEventListener("input", function () {
-    const q = this.value.toLowerCase().trim();
+    const q = this.value.toLowerCase();
 
-    document.querySelectorAll(".fund-item").forEach(item => {
-      const match = !q || item.dataset.name.includes(q);
-      item.style.display = match ? "" : "none";
-    });
-
-    // auto-expand categories with matches
-    document.querySelectorAll(".category-block").forEach(block => {
-      const visible = [...block.querySelectorAll(".fund-item")]
-        .some(i => i.style.display !== "none");
-
-      const list = block.querySelector(".fund-list");
-      const toggle = block.querySelector(".cat-toggle");
-
-      if (q && visible) {
-        list.classList.remove("hidden");
-        toggle?.classList.add("open");
-      }
+    document.querySelectorAll(".fund-item").forEach(i => {
+      i.style.display = i.dataset.name.includes(q) ? "" : "none";
     });
   });
 }
 
 // ── Analysis ───────────────────────────────────────────────────
 async function runAnalysis() {
-  clearError();
-
   if (selectedFunds.size < 3) {
-    showError("Please select at least 3 funds.");
+    showError("Select at least 3 funds");
     return;
   }
 
@@ -263,92 +186,132 @@ async function runAnalysis() {
 
   for (const code of selectedFunds) {
     const amt = parseFloat(fundAmounts[code]);
-
-    if (!amt || amt <= 0) valid = false;
+    if (!amt) valid = false;
     else holdings.push({ scheme_code: code, amount: amt });
   }
 
   if (!valid) {
-    showError("Enter valid amount for all funds.");
+    showError("Invalid amounts");
     return;
   }
 
   try {
-    showLoader(true);
-
     const res = await fetch(`${API_BASE}/api/analyze`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ holdings }),
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ holdings })
     });
 
     const data = await res.json();
 
     if (data.status !== "ok") {
-      showError(data.message || "Analysis failed.");
+      showError(data.message);
       return;
     }
 
-    frontier = data.frontier || [];
-    frontierIndex = data.selected_frontier_index ?? 0;
+    frontier = data.frontier;
+    frontierIndex = data.selected_frontier_index;
 
     renderDashboard(data);
 
   } catch (e) {
     console.error(e);
-    showError("Network error.");
-  } finally {
-    showLoader(false);
+    showError("Network error");
   }
 }
 
-// ── Dashboard ──────────────────────────────────────────────────
+// ── Dashboard ─────────────────────────────────────────────────
 function renderDashboard(data) {
-  const dash = document.getElementById("dashboard");
-  document.getElementById("empty-state").style.display = "none";
-  dash.style.display = "flex";
-
-  const curr = data.current_portfolio;
-  const opt  = data.optimal_portfolio;
-
-  setMetric("m-ret-curr", pct(curr.portfolio_return));
-  setMetric("m-vol-curr", pct(curr.portfolio_volatility));
-  setMetric("m-sr-curr", curr.sharpe.toFixed(2));
-
-  setMetric("m-ret-opt", pct(opt.return));
-  setMetric("m-vol-opt", pct(opt.volatility));
-  setMetric("m-sr-opt", opt.sharpe.toFixed(2));
-
-  safe(() => renderDonut(curr.category_weights));
-  safe(() => renderFrontier(data.frontier, data.selected_frontier_index, curr, opt));
+  safe(() => renderDonut(data.current_portfolio.category_weights));
+  safe(() => renderFrontier(data.frontier, data.selected_frontier_index));
   safe(() => renderActions(data.actions));
-  safe(() => renderInsights(data.insights));
 }
 
-// ── Utils ──────────────────────────────────────────────────────
-function pct(v) { return (v * 100).toFixed(1) + "%"; }
+// ── Charts ─────────────────────────────────────────────────────
+function renderDonut(w) {
+  const ctx = document.getElementById("donut-chart")?.getContext("2d");
+  if (!ctx) return;
 
-function setMetric(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = value;
+  if (donutChart) donutChart.destroy();
+
+  donutChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(w),
+      datasets: [{ data: Object.values(w).map(v => v * 100) }]
+    }
+  });
+}
+
+function renderFrontier(frt, idx) {
+  const ctx = document.getElementById("frontier-chart")?.getContext("2d");
+  if (!ctx) return;
+
+  if (frontierChart) frontierChart.destroy();
+
+  frontierChart = new Chart(ctx, {
+    type: "scatter",
+    data: {
+      datasets: [{
+        data: frt.map(p => ({ x: p.volatility*100, y: p.return*100 }))
+      }]
+    }
+  });
+}
+
+// ── Actions ────────────────────────────────────────────────────
+function renderActions(a) {
+  const el = document.getElementById("actions-tbody");
+  if (!el) return;
+
+  el.innerHTML = a.actions.map(x => `
+    <tr>
+      <td>${x.name}</td>
+      <td>${(x.current_weight*100).toFixed(1)}%</td>
+      <td>${(x.optimal_weight*100).toFixed(1)}%</td>
+    </tr>
+  `).join("");
+}
+
+// ── Reoptimize (ONLY ONE VERSION NOW) ──────────────────────────
+async function reoptimizeWithSelected() {
+  if (!frontier.length) return;
+
+  const holdings = [];
+
+  document.querySelectorAll("input[data-code]").forEach(inp => {
+    const amt = parseFloat(inp.value);
+    if (amt > 0) {
+      holdings.push({
+        scheme_code: inp.dataset.code,
+        amount: amt
+      });
+    }
+  });
+
+  try {
+    const res = await fetch(`${API_BASE}/api/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ holdings, frontier_index: frontierIndex })
+    });
+
+    const data = await res.json();
+
+    if (data.status === "ok") renderDashboard(data);
+    else showError(data.message);
+
+  } catch (e) {
+    console.error(e);
+    showError("Reoptimize failed");
+  }
+}
+
+// ── Misc ───────────────────────────────────────────────────────
+function updateFrontierHighlight() {
+  console.log("slider move");
 }
 
 function showError(msg) {
   console.error(msg);
-  const el = document.getElementById("error-banner");
-  if (el) {
-    el.textContent = msg;
-    el.classList.add("visible");
-  }
 }
-
-function clearError() {
-  document.getElementById("error-banner")?.classList.remove("visible");
-}
-
-function showLoader(show) {
-  document.getElementById("loader")?.classList.toggle("visible", show);
-}
-
-// ── Minimal charts/actions (unchanged logic) ──
-
