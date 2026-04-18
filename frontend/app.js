@@ -326,8 +326,13 @@ function renderDashboard(data) {
      <span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>`;
 
   // 🔥 CRITICAL — these were missing/breaking
-  safe(() => renderDonut(curr.category_weights, opt.weights, data));
-  safe(() => renderFrontier(data.frontier, data.selected_frontier_index, curr, opt));
+  safe(() => renderDonut(curr.category_weights));
+  safe(() => renderFrontier(
+    data.frontier,
+    data.selected_frontier_index,
+    curr,
+    opt
+  ));
   safe(() => renderActions(data.actions));
   safe(() => renderInsights(data.insights));
 
