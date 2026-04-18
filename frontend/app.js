@@ -351,9 +351,4 @@ function showLoader(show) {
 }
 
 // ── Minimal charts/actions (unchanged logic) ──
-function renderDonut() {}
-function renderFrontier() {}
-function renderActions() {}
-function renderInsights() {}
 
-function updateFrontierHighlight() {}
