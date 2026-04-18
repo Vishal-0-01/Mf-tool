@@ -223,6 +223,30 @@ function bindEvents() {
     frontierIndex = parseInt(this.value);
     updateFrontierHighlight();
   });
+
+  // ✅ RESTORE SEARCH (this is what broke)
+  document.getElementById("fund-search")?.addEventListener("input", function () {
+    const q = this.value.toLowerCase().trim();
+
+    document.querySelectorAll(".fund-item").forEach(item => {
+      const match = !q || item.dataset.name.includes(q);
+      item.style.display = match ? "" : "none";
+    });
+
+    // auto-expand categories with matches
+    document.querySelectorAll(".category-block").forEach(block => {
+      const visible = [...block.querySelectorAll(".fund-item")]
+        .some(i => i.style.display !== "none");
+
+      const list = block.querySelector(".fund-list");
+      const toggle = block.querySelector(".cat-toggle");
+
+      if (q && visible) {
+        list.classList.remove("hidden");
+        toggle?.classList.add("open");
+      }
+    });
+  });
 }
 
 // ── Analysis ───────────────────────────────────────────────────
