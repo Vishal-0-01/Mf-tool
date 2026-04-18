@@ -45,8 +45,9 @@ header {
   padding: 18px 32px;
   border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;   /* 🔥 KEY FIX */
+  align-items: flex-start;  /* left aligned */
+  gap: 2px;
   background: var(--surface);
 }
 
@@ -58,6 +59,16 @@ header {
   letter-spacing: -0.5px;
 }
 .logo span { color: var(--accent); }
+
+.builder-name {
+  font-family: var(--font-head);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.3px;
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+}
 
 .tagline {
   font-size: 12px;
