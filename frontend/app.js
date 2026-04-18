@@ -240,6 +240,29 @@ function bindEvents() {
   document.getElementById("btn-reoptimize")?.addEventListener("click", reoptimizeWithSelected);
 }
 
+document.getElementById("fund-search")?.addEventListener("input", function () {
+  const q = this.value.toLowerCase().trim();
+
+  document.querySelectorAll(".fund-item").forEach(item => {
+    const match = !q || item.dataset.name.includes(q);
+    item.style.display = match ? "" : "none";
+  });
+
+  // auto-expand categories with matches
+  document.querySelectorAll(".category-block").forEach(block => {
+    const visible = [...block.querySelectorAll(".fund-item")]
+      .some(i => i.style.display !== "none");
+
+    const list = block.querySelector(".fund-list");
+    const toggle = block.querySelector(".cat-toggle");
+
+    if (q && visible) {
+      list.classList.remove("hidden");
+      toggle?.classList.add("open");
+    }
+  });
+});
+
 // ── Analysis ───────────────────────────────────────────────────
 async function runAnalysis() {
   console.log("ANALYZE CLICKED");
@@ -544,16 +567,38 @@ function renderActions(actionData) {
 
   actionData.actions.forEach(a => {
     const tr = document.createElement("tr");
+
+    const delta = a.delta >= 0
+      ? `+${(a.delta * 100).toFixed(1)}%`
+      : `${(a.delta * 100).toFixed(1)}%`;
+
+    const amt = a.amount_change >= 0
+      ? `+₹${fmt(a.amount_change)}`
+      : `-₹${fmt(Math.abs(a.amount_change))}`;
+
     tr.innerHTML = `
       <td>${a.name}</td>
-      <td>${(a.current_weight*100).toFixed(1)}%</td>
-      <td>${(a.optimal_weight*100).toFixed(1)}%</td>
-      <td>${(a.delta*100).toFixed(1)}%</td>
+      <td>${(a.current_weight * 100).toFixed(1)}%</td>
+      <td>${(a.optimal_weight * 100).toFixed(1)}%</td>
+      <td style="color:${a.delta >= 0 ? '#4fffb0' : '#ff6b6b'}">${delta}</td>
       <td>${a.action}</td>
-      <td>₹${a.amount_change}</td>
+      <td>${amt}</td>
     `;
+
     tbody.appendChild(tr);
   });
+
+  // 🔥 THIS WAS MISSING
+  const turnoverEl = document.getElementById("turnover-val");
+  const costEl = document.getElementById("txn-cost-val");
+
+  if (turnoverEl) {
+    turnoverEl.textContent = pct(actionData.turnover);
+  }
+
+  if (costEl) {
+    costEl.textContent = `₹${fmt(actionData.transaction_cost_inr)} (${pct(actionData.transaction_cost_pct)})`;
+  }
 }
 
 // Insights
