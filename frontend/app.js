@@ -446,24 +446,88 @@ async function reoptimizeWithSelected() {
 // ── FALLBACK UI FUNCTIONS (RESTORE MISSING ONES) ──
 
 // Donut (category allocation)
+
 function renderDonut(categoryWeights) {
-  const el = document.getElementById("donut-chart");
-  if (!el) return;
+  const canvas = document.getElementById("donut-chart");
+  if (!canvas) return;
 
-  el.innerHTML = Object.entries(categoryWeights)
-    .map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`)
-    .join("<br>");
+  const ctx = canvas.getContext("2d");
+
+  if (window.donutChart) {
+    window.donutChart.destroy();
+  }
+
+  const labels = Object.keys(categoryWeights);
+  const values = labels.map(k => categoryWeights[k] * 100);
+
+  window.donutChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: ["#4fffb0", "#3de8ff", "#ffb347", "#c77dff"],
+      }],
+    },
+    options: {
+      plugins: {
+        legend: {
+          labels: { color: "#aaa" }
+        }
+      }
+    }
+  });
 }
-
 // Frontier (simple table instead of chart)
-function renderFrontier(frontier) {
-  const el = document.getElementById("frontier-chart");
-  if (!el) return;
+function renderFrontier(frontier, selectedIndex, curr, opt) {
+  const canvas = document.getElementById("frontier-chart");
+  if (!canvas) return;
 
-  el.innerHTML = frontier
-    .slice(0, 5)
-    .map(p => `Vol: ${(p.volatility*100).toFixed(1)} | Ret: ${(p.return*100).toFixed(1)}`)
-    .join("<br>");
+  const ctx = canvas.getContext("2d");
+
+  if (window.frontierChart) {
+    window.frontierChart.destroy();
+  }
+
+  const points = frontier.map(p => ({
+    x: p.volatility * 100,
+    y: p.return * 100
+  }));
+
+  const selected = frontier[selectedIndex];
+
+  window.frontierChart = new Chart(ctx, {
+    type: "scatter",
+    data: {
+      datasets: [
+        {
+          label: "Frontier",
+          data: points,
+          showLine: true,
+          borderColor: "#4fffb0",
+        },
+        {
+          label: "Selected",
+          data: selected ? [{
+            x: selected.volatility * 100,
+            y: selected.return * 100
+          }] : [],
+          backgroundColor: "#fff",
+          pointRadius: 6
+        }
+      ]
+    },
+    options: {
+      scales: {
+        x: {
+          title: { display: true, text: "Volatility (%)" }
+        },
+        y: {
+          title: { display: true, text: "Return (%)" }
+        }
+      }
+    }
+  });
 }
 
 // Actions table
