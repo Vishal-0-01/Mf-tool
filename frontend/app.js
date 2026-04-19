@@ -74,29 +74,28 @@ async function reoptimizeWithSelected() {
 }
 
 // ── Init ───────────────────────────────────────────────────────
+
 document.addEventListener("DOMContentLoaded", async () => {
   await loadFunds();
   bindEvents();
 });
 
+// ── Load Funds ─────────────────────────────────────────────────
 async function loadFunds() {
   try {
-    const res = await fetch(${API_BASE}/api/funds);
+    const res = await fetch(`${API_BASE}/api/funds`);
     const data = await res.json();
 
-    if (!data || data.status !== "ok") {
-      throw new Error("Invalid backend response");
-    }
+    if (!data || data.status !== "ok") throw new Error("Invalid backend");
 
     fundUniverse = data.funds;
     renderFundList(fundUniverse);
 
   } catch (e) {
     console.error(e);
-    showError("Backend not reachable. Check Render.");
+    showError("Backend not reachable.");
   }
 }
-
 // ── Render fund list ───────────────────────────────────────────
 const CAT_DOTS = {
   "Large Cap": "large",
