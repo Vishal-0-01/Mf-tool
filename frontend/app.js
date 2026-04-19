@@ -352,10 +352,12 @@ function renderDashboard(data) {
   setMetric("m-sr-opt", opt.sharpe.toFixed(2));
 
   // ── Macro ──
+  // ── Macro ──
   const m = data.macro;
   document.getElementById("macro-result").innerHTML =
-    <span class="macro-chip">Equity ${pct(m.equity_pct)}</span>   <span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>;
+    '<span class="macro-chip">Equity ${pct(m.equity_pct)}</span>   <span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>';
 
+  
   // 🔥 CRITICAL — these were missing/breaking
   safe(() => renderDonut(curr.category_weights));
   safe(() => renderFrontier(
