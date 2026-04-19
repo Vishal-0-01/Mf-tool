@@ -355,8 +355,8 @@ function renderDashboard(data) {
   // ── Macro ──
   const m = data.macro;
   document.getElementById("macro-result").innerHTML =
-    `<span class="macro-chip">Equity ${pct(m.equity_pct)}</span>`   `<span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>`;
-
+  `<span class="macro-chip">Equity ${pct(m.equity_pct)}</span>
+   <span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>`;
   
   // 🔥 CRITICAL — these were missing/breaking
   safe(() => renderDonut(curr.category_weights));
@@ -534,31 +534,27 @@ function renderActions(actionData) {
   actionData.actions.forEach(a => {
     const tr = document.createElement("tr");
 
-    
-
     const delta = a.delta >= 0
       ? `+${(a.delta * 100).toFixed(1)}%`
       : `${(a.delta * 100).toFixed(1)}%`;
-
 
     const amt = a.amount_change >= 0
       ? `+₹${fmt(a.amount_change)}`
       : `-₹${fmt(Math.abs(a.amount_change))}`;
 
     tr.innerHTML = `
+      <td>${a.name}</td>
+      <td>${(a.current_weight * 100).toFixed(1)}%</td>
+      <td>${(a.optimal_weight * 100).toFixed(1)}%</td>
+      <td style="color:${a.delta >= 0 ? '#4fffb0' : '#ff6b6b'}">${delta}</td>
+      <td>${a.action}</td>
+      <td>${amt}</td>
+    `;
 
-      <td>${a.name}</td>    
-      <td>${(a.current_weight * 100).toFixed(1)}%</td>    
-      <td>${(a.optimal_weight * 100).toFixed(1)}%</td>    
-      <td style="color:${a.delta >= 0 ? '#4fffb0' : '#ff6b6b'}">${delta}</td>    
-      <td>${a.action}</td>    
-      <td>${amt}</td>    
-    `;    tbody.appendChild(tr);
-
+    tbody.appendChild(tr);
   });
-}
 
-  // 🔥 THIS WAS MISSING
+  // ✅ KEEP THIS INSIDE
   const turnoverEl = document.getElementById("turnover-val");
   const costEl = document.getElementById("txn-cost-val");
 
