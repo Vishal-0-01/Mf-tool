@@ -534,9 +534,12 @@ function renderActions(actionData) {
   actionData.actions.forEach(a => {
     const tr = document.createElement("tr");
 
+    
+
     const delta = a.delta >= 0
-      ? +${(a.delta * 100).toFixed(1)}%
-      : ${(a.delta * 100).toFixed(1)}%;
+      ? `+${(a.delta * 100).toFixed(1)}%`
+      : `${(a.delta * 100).toFixed(1)}%`;
+
 
     const amt = a.amount_change >= 0
       ? +₹${fmt(a.amount_change)}
@@ -553,6 +556,7 @@ function renderActions(actionData) {
     `;    tbody.appendChild(tr);
 
   });
+}
 
   // 🔥 THIS WAS MISSING
   const turnoverEl = document.getElementById("turnover-val");
