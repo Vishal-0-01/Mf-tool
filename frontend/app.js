@@ -48,7 +48,7 @@ async function reoptimizeWithSelected() {
   }
 
   try {
-    const res = await fetch(${API_BASE}/api/analyze, {
+    const res = await fetch(`${API_BASE}/api/analyze`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
