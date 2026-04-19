@@ -567,7 +567,7 @@ function renderActions(actionData) {
   }
 
   if (costEl) {
-    costEl.textContent = ₹${fmt(actionData.transaction_cost_inr)} (${pct(actionData.transaction_cost_pct)});
+    costEl.textContent = `₹${fmt(actionData.transaction_cost_inr)} (${pct(actionData.transaction_cost_pct)}`);
   }
 }
 
