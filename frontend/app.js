@@ -355,7 +355,7 @@ function renderDashboard(data) {
   // ── Macro ──
   const m = data.macro;
   document.getElementById("macro-result").innerHTML =
-    '<span class="macro-chip">Equity ${pct(m.equity_pct)}</span>   <span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>';
+    `<span class="macro-chip">Equity ${pct(m.equity_pct)}</span>`   <span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>';
 
   
   // 🔥 CRITICAL — these were missing/breaking
@@ -542,8 +542,8 @@ function renderActions(actionData) {
 
 
     const amt = a.amount_change >= 0
-      ? +₹${fmt(a.amount_change)}
-      : -₹${fmt(Math.abs(a.amount_change))};
+      ? `+₹${fmt(a.amount_change)}`
+      : `-₹${fmt(Math.abs(a.amount_change))}`;
 
     tr.innerHTML = `
 
@@ -576,7 +576,7 @@ function renderInsights(insights) {
   const el = document.getElementById("insights-list");
   if (!el) return;
 
-  el.innerHTML = insights.map(i => <div>${i}</div>).join("");
+  el.innerHTML = insights.map(i => `<div>${i}</div>`).join("");
 }
 
 // ─────────────────────────────────────────────
@@ -615,7 +615,7 @@ async function reoptimizeWithSelected() {
   });
 
   try {
-    const res = await fetch(${API_BASE}/api/analyze, {
+    const res = await fetch(`${API_BASE}/api/analyze`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
