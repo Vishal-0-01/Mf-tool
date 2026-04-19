@@ -304,8 +304,14 @@ async function runAnalysis() {
     const res = await fetch(`${API_BASE}/api/analyze`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ holdings })
+      body: JSON.stringify({
+        holdings,
+        pe: parseFloat(document.getElementById("inp-pe").value),
+        pb: parseFloat(document.getElementById("inp-pb").value)
+      })
     });
+    console.log("PE:", document.getElementById("inp-pe").value);
+    console.log("PB:", document.getElementById("inp-pb").value);
 
     const data = await res.json();
 
