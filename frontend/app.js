@@ -279,13 +279,10 @@ document.getElementById("fund-search")?.addEventListener("input", function () {
 });
 
 // ── Analysis ───────────────────────────────────────────────────
+//-----Analysis chatgpt-------------//
 async function runAnalysis() {
-  console.log("ANALYZE CLICKED");
-
-  clearError();
-
   if (selectedFunds.size < 3) {
-    showError("Please select at least 3 funds.");
+    showError("Select at least 3 funds");
     return;
   }
 
@@ -294,49 +291,46 @@ async function runAnalysis() {
 
   for (const code of selectedFunds) {
     const amt = parseFloat(fundAmounts[code]);
-
-    if (!amt || amt <= 0) {
-      valid = false;
-    } else {
-      holdings.push({ scheme_code: code, amount: amt });
-    }
-
+    if (!amt) valid = false;
+    else holdings.push({ scheme_code: code, amount: amt });
   }
 
   if (!valid) {
-    showError("Enter valid amount for all funds.");
+    showError("Invalid amounts");
     return;
   }
 
   try {
-    showLoader(true);
-
-    const res = await fetch(${API_BASE}/api/analyze, {
+    const res = await fetch(`${API_BASE}/api/analyze`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ holdings }),
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ holdings })
     });
 
     const data = await res.json();
-    console.log("API RESPONSE:", data);
 
-    if (!data || data.status !== "ok") {
-      showError(data?.message || "Analysis failed.");
+    if (data.status !== "ok") {
+      showError(data.message);
       return;
     }
 
-    frontier = data.frontier || [];
-    frontierIndex = data.selected_frontier_index ?? 0;
+    frontier = data.frontier;
+    frontierIndex = data.selected_frontier_index;
 
     renderDashboard(data);
 
   } catch (e) {
     console.error(e);
-    showError("Network error.");
-  } finally {
+    showError("Network error");
+  }
+  finally {
     showLoader(false);
   }
 }
+
+
+
+
 
 // ── Dashboard ──────────────────────────────────────────────────
 
