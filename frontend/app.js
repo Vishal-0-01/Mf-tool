@@ -355,7 +355,7 @@ function renderDashboard(data) {
   // ── Macro ──
   const m = data.macro;
   document.getElementById("macro-result").innerHTML =
-    `<span class="macro-chip">Equity ${pct(m.equity_pct)}</span>`   '<span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>';
+    `<span class="macro-chip">Equity ${pct(m.equity_pct)}</span>`   `<span class="macro-chip">z = ${m.z_score.toFixed(2)}</span>`;
 
   
   // 🔥 CRITICAL — these were missing/breaking
