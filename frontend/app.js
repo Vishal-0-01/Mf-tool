@@ -314,6 +314,8 @@ async function runAnalysis() {
     console.log("PB:", document.getElementById("inp-pb").value);
 
     const data = await res.json();
+    window.lastData = data;
+    console.log("DEBUG DATA:", data);
     console.log("DEBUG DATA:", data.debug);
 
     if (data.status !== "ok") {
