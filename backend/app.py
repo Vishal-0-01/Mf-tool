@@ -277,6 +277,42 @@ def analyze():
         except Exception:
             macro_sensitivity = []
 
+        # ── DEBUG: NAV + RETURNS VISIBILITY ─────────────────
+
+        try:
+            returns_df_debug = build_returns_matrix(NAV_DATA, current["codes"])
+
+            nav_debug = {}
+            returns_debug = {}
+
+            for code in current["codes"]:
+                series = NAV_DATA.get(code, [])
+
+                nav_debug[code] = {
+                    "points": len(series),
+                    "first_nav": float(series[0][1]) if series else None,
+                    "last_nav": float(series[-1][1]) if series else None,
+                }
+
+                 if code in returns_df_debug.columns:
+                     r = returns_df_debug[code].dropna()
+                     returns_debug[code] = {
+                         "count": int(len(r)),
+                         "mean_daily": float(r.mean()) if len(r) else 0.0,
+                         "std_daily": float(r.std()) if len(r) else 0.0,
+                     }
+                 else:
+                     returns_debug[code] = {
+                         "count": 0,
+                         "mean_daily": 0.0,
+                         "std_daily": 0.0,
+                     }
+
+         except Exception as e:
+             nav_debug = {}
+             returns_debug = {}
+             logger.error(f"Debug block failed: {e}")
+
         response = {
             "status": "ok",
             "current_portfolio": current,
@@ -304,6 +340,11 @@ def analyze():
                 "risk_contribution": risk_contribution,
                 "concentration":     concentration,
                 "redundancy":        redundancy,
+            },
+            "debug": {
+                "nav": nav_debug,
+                "returns": returns_debug,
+                "filtered_codes": codes,
             },
         }
 
