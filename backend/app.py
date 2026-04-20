@@ -279,6 +279,8 @@ def analyze():
 
         # ── DEBUG: NAV + RETURNS VISIBILITY ─────────────────
 
+        
+        
         try:
             returns_df_debug = build_returns_matrix(NAV_DATA, current["codes"])
 
@@ -294,24 +296,24 @@ def analyze():
                     "last_nav": float(series[-1][1]) if series else None,
                 }
 
-                 if code in returns_df_debug.columns:
-                     r = returns_df_debug[code].dropna()
-                     returns_debug[code] = {
-                         "count": int(len(r)),
-                         "mean_daily": float(r.mean()) if len(r) else 0.0,
-                         "std_daily": float(r.std()) if len(r) else 0.0,
-                     }
-                 else:
-                     returns_debug[code] = {
-                         "count": 0,
-                         "mean_daily": 0.0,
-                         "std_daily": 0.0,
-                     }
+                if code in returns_df_debug.columns:
+                    r = returns_df_debug[code].dropna()
+                    returns_debug[code] = {
+                        "count": int(len(r)),
+                        "mean_daily": float(r.mean()) if len(r) else 0.0,
+                        "std_daily": float(r.std()) if len(r) else 0.0,
+                    }
+                else:
+                    returns_debug[code] = {
+                        "count": 0,
+                        "mean_daily": 0.0,
+                        "std_daily": 0.0,
+                    }
 
-         except Exception as e:
-             nav_debug = {}
-             returns_debug = {}
-             logger.error(f"Debug block failed: {e}")
+        except Exception as e:
+            nav_debug = {}
+            returns_debug = {}
+            logger.error(f"Debug block failed: {e}")
 
         response = {
             "status": "ok",
