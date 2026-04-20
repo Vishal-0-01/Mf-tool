@@ -188,6 +188,97 @@
         <div id="insights-list" class="insights-list"></div>
       </div>
 
+      <!-- ══ NEW SECTIONS ═══════════════════════════════════ -->
+
+      <!-- Target Portfolio (Unconstrained Benchmark) -->
+      <div>
+        <div class="section-head">Target Portfolio <span style="font-size:11px;font-weight:400;color:var(--muted);font-family:var(--font-mono)">(unconstrained benchmark at same risk)</span></div>
+        <div class="metrics-row">
+          <div class="metric-card">
+            <div class="metric-label">Target Return</div>
+            <div class="metric-value positive" id="m-ret-target">—</div>
+            <div class="metric-sub">Max return @ user vol</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Target Volatility</div>
+            <div class="metric-value" id="m-vol-target">—</div>
+            <div class="metric-sub">= user portfolio vol</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Target Sharpe</div>
+            <div class="metric-value positive" id="m-sr-target">—</div>
+            <div class="metric-sub">No macro / no caps</div>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <div class="section-label" style="margin-bottom:6px">Constraint Impact</div>
+          <div id="constraint-impact-row" class="macro-result"></div>
+        </div>
+      </div>
+
+      <!-- Same-Risk Comparison -->
+      <div>
+        <div class="section-head">Same-Risk Comparison</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Portfolio</th>
+                <th>Return</th>
+                <th>Sharpe</th>
+              </tr>
+            </thead>
+            <tbody id="comparison-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Dual Frontier -->
+      <div>
+        <div class="section-head">Dual Frontier <span style="font-size:11px;font-weight:400;color:var(--muted);font-family:var(--font-mono)">(constrained vs unconstrained)</span></div>
+        <div class="chart-card" style="padding:20px">
+          <canvas id="dual-frontier-chart" height="220"></canvas>
+        </div>
+      </div>
+
+      <!-- Exposure Decomposition -->
+      <div>
+        <div class="section-head">Exposure Decomposition</div>
+        <div id="exposure-row" class="macro-result"></div>
+      </div>
+
+      <!-- Diagnostics -->
+      <div>
+        <div class="section-head">Portfolio Diagnostics</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+          <!-- Concentration -->
+          <div class="chart-card" style="padding:16px">
+            <div class="chart-title">Concentration</div>
+            <div id="concentration-row" class="macro-result" style="margin-top:8px"></div>
+          </div>
+
+          <!-- Risk Contribution -->
+          <div class="chart-card" style="padding:16px">
+            <div class="chart-title">Risk Contribution (Optimal Wts)</div>
+            <div id="risk-contrib-list" style="margin-top:8px"></div>
+          </div>
+
+        </div>
+
+        <!-- Redundancy -->
+        <div style="margin-top:16px">
+          <div class="section-label" style="margin-bottom:8px">Redundancy Detection (corr &gt; 0.80)</div>
+          <div id="redundancy-list" class="insights-list"></div>
+        </div>
+      </div>
+
+      <!-- Macro Sensitivity -->
+      <div>
+        <div class="section-head">Macro Sensitivity <span style="font-size:11px;font-weight:400;color:var(--muted);font-family:var(--font-mono)">(Equity% across PE/PB grid)</span></div>
+        <div id="macro-sensitivity-grid"></div>
+      </div>
+
     </main>
 
     <!-- ── Empty state (shown before first analysis) ──── -->
