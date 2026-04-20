@@ -374,6 +374,9 @@ function renderDashboard(data) {
   ));
   safe(() => renderActions(data.actions));
   safe(() => renderInsights(data.insights));
+  // ── NEW renders ──
+  safe(() => renderTargetComparison(data));
+  safe(() => renderDiagnostics(data));
 
   // slider
   const slider = document.getElementById("frontier-slider");
@@ -640,4 +643,214 @@ async function reoptimizeWithSelected() {
     console.error(e);
     showError("Reoptimize failed");
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NEW FEATURE RENDERS — appended, nothing above touched
+// ═══════════════════════════════════════════════════════════════
+
+// ── Target Portfolio & Same-Risk Comparison ──────────────────
+function renderTargetComparison(data) {
+  const tp = data.target_portfolio;
+  const ci = data.constraint_impact;
+  const sr = data.comparison?.same_risk;
+
+  // Target metrics
+  setMetric("m-ret-target", tp ? pct(tp.return) : "—", tp && tp.return >= 0);
+  setMetric("m-vol-target", tp ? pct(tp.volatility) : "—");
+  setMetric("m-sr-target",  tp ? tp.sharpe.toFixed(2) : "—");
+
+  // Constraint impact
+  const ciEl = document.getElementById("constraint-impact-row");
+  if (ciEl && ci) {
+    ciEl.innerHTML =
+      `<span class="macro-chip" style="border-color:${ci.return_loss > 0 ? '#ff6b6b' : '#4fffb0'}">
+         Return cost: ${ci.return_loss > 0 ? "-" : "+"}${pct(Math.abs(ci.return_loss))}
+       </span>
+       <span class="macro-chip" style="border-color:${ci.sharpe_loss > 0 ? '#ff6b6b' : '#4fffb0'}">
+         Sharpe cost: ${ci.sharpe_loss > 0 ? "-" : "+"}${Math.abs(ci.sharpe_loss).toFixed(3)}
+       </span>`;
+  }
+
+  // Same-risk comparison table
+  const tbody = document.getElementById("comparison-tbody");
+  if (tbody && sr) {
+    tbody.innerHTML = `
+      <tr>
+        <td>User Portfolio</td>
+        <td>${pct(sr.user_return)}</td>
+        <td>${sr.user_sharpe.toFixed(2)}</td>
+      </tr>
+      <tr>
+        <td>Target (Unconstrained)</td>
+        <td style="color:var(--accent)">${pct(sr.target_return)}</td>
+        <td style="color:var(--accent)">${sr.target_sharpe.toFixed(2)}</td>
+      </tr>
+      <tr>
+        <td>Constrained Optimal</td>
+        <td style="color:var(--accent2)">${pct(sr.optimal_return)}</td>
+        <td style="color:var(--accent2)">${sr.optimal_sharpe.toFixed(2)}</td>
+      </tr>`;
+  }
+
+  // Dual frontier chart
+  if (data.frontier_unconstrained?.length && data.frontier_constrained?.length) {
+    renderDualFrontier(data.frontier_constrained, data.frontier_unconstrained,
+                       data.selected_frontier_index);
+  }
+}
+
+// ── Dual Frontier chart ──────────────────────────────────────
+let dualFrontierChart = null;
+
+function renderDualFrontier(constrained, unconstrained, selIdx) {
+  const canvas = document.getElementById("dual-frontier-chart");
+  if (!canvas) return;
+
+  if (dualFrontierChart) dualFrontierChart.destroy();
+  const ctx = canvas.getContext("2d");
+
+  const conPoints = constrained.map(p => ({ x: +(p.volatility*100).toFixed(2), y: +(p.return*100).toFixed(2) }));
+  const uncPoints = unconstrained.map(p => ({ x: +(p.volatility*100).toFixed(2), y: +(p.return*100).toFixed(2) }));
+  const selPt = constrained[selIdx] ? [{ x: +(constrained[selIdx].volatility*100).toFixed(2), y: +(constrained[selIdx].return*100).toFixed(2) }] : [];
+
+  dualFrontierChart = new Chart(ctx, {
+    type: "scatter",
+    data: {
+      datasets: [
+        { label: "Unconstrained", data: uncPoints, showLine: true, borderColor: "#4fffb0",
+          backgroundColor: "rgba(79,255,176,0.3)", pointRadius: 3, borderWidth: 1.5, tension: 0.3 },
+        { label: "Constrained",   data: conPoints, showLine: true, borderColor: "#3de8ff",
+          backgroundColor: "rgba(61,232,255,0.3)", pointRadius: 3, borderWidth: 1.5, tension: 0.3, borderDash: [5,3] },
+        { label: "Selected",      data: selPt,     backgroundColor: "#fff",
+          borderColor: "#ffb347", pointRadius: 7, borderWidth: 2 },
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { title: { display: true, text: "Volatility (%)", color: "#6b7590",
+                       font: { family: "DM Mono", size: 10 } },
+             grid: { color: "#1a1f2a" }, ticks: { color: "#6b7590", font: { family: "DM Mono", size: 10 } } },
+        y: { title: { display: true, text: "Return (%)",    color: "#6b7590",
+                       font: { family: "DM Mono", size: 10 } },
+             grid: { color: "#1a1f2a" }, ticks: { color: "#6b7590", font: { family: "DM Mono", size: 10 } } },
+      },
+      plugins: {
+        legend: { labels: { color: "#6b7590", font: { family: "DM Mono", size: 10 },
+                             boxWidth: 10, padding: 10 } },
+        tooltip: { backgroundColor: "#181c24", borderColor: "#252934", borderWidth: 1,
+                   titleColor: "#e8ecf4", bodyColor: "#6b7590",
+                   callbacks: { label: ctx => ` Vol: ${ctx.parsed.x}%  Ret: ${ctx.parsed.y}%` } }
+      }
+    }
+  });
+}
+
+// ── Diagnostics panel ────────────────────────────────────────
+function renderDiagnostics(data) {
+  const diag = data.diagnostics;
+  if (!diag) return;
+
+  // Exposure
+  const exp = data.exposure;
+  const expEl = document.getElementById("exposure-row");
+  if (expEl && exp) {
+    expEl.innerHTML =
+      `<span class="macro-chip">Equity ${pct(exp.equity_pct)}</span>
+       <span class="macro-chip">Debt ${pct(exp.debt_pct)}</span>
+       ${Object.entries(exp.categories).map(([c,v]) => `<span class="macro-chip">${c} ${pct(v)}</span>`).join("")}`;
+  }
+
+  // Concentration
+  const conc = diag.concentration;
+  const concEl = document.getElementById("concentration-row");
+  if (concEl && conc) {
+    concEl.innerHTML =
+      `<span class="macro-chip">Max weight ${pct(conc.max_weight)}</span>
+       <span class="macro-chip">Top-3 weight ${pct(conc.top3_weight)}</span>`;
+  }
+
+  // Redundancy
+  const redEl = document.getElementById("redundancy-list");
+  if (redEl) {
+    const red = diag.redundancy || [];
+    if (red.length === 0) {
+      redEl.innerHTML = `<div class="insight-item" style="border-left-color:var(--accent)">✅ No highly correlated fund pairs detected (&gt;0.80)</div>`;
+    } else {
+      redEl.innerHTML = red.map(r =>
+        `<div class="insight-item" style="border-left-color:var(--warn)">
+           ⚠️ Corr ${r.correlation.toFixed(2)}: ${r.fund1} ↔ ${r.fund2}
+         </div>`
+      ).join("");
+    }
+  }
+
+  // Risk contribution bar
+  renderRiskContrib(diag.risk_contribution, data.current_portfolio?.funds);
+
+  // Macro sensitivity heat row
+  renderMacroSensitivity(data.macro_sensitivity);
+}
+
+function renderRiskContrib(rc, funds) {
+  const el = document.getElementById("risk-contrib-list");
+  if (!el || !rc) return;
+
+  const total = Object.values(rc).reduce((a, b) => a + b, 0) || 1;
+  const sorted = Object.entries(rc).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  const nameMap = {};
+  (funds || []).forEach(f => { nameMap[f.scheme_code] = f.name; });
+
+  el.innerHTML = sorted.map(([code, val]) => {
+    const pctVal = (val / total * 100).toFixed(1);
+    const name = nameMap[code] || code;
+    return `<div style="margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${name}</span>
+        <span style="font-family:var(--font-mono)">${pctVal}%</span>
+      </div>
+      <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${pctVal}%;background:var(--accent2);border-radius:3px"></div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderMacroSensitivity(sensitivity) {
+  const el = document.getElementById("macro-sensitivity-grid");
+  if (!el || !sensitivity?.length) return;
+
+  // Show as compact grid: rows = PE, cols = PB
+  const peVals = [...new Set(sensitivity.map(s => s.pe))].sort((a,b) => a-b);
+  const pbVals = [...new Set(sensitivity.map(s => s.pb))].sort((a,b) => a-b);
+
+  const lookup = {};
+  sensitivity.forEach(s => { lookup[`${s.pe}_${s.pb}`] = s.equity_pct; });
+
+  const minEq = Math.min(...sensitivity.map(s => s.equity_pct));
+  const maxEq = Math.max(...sensitivity.map(s => s.equity_pct));
+  const range = maxEq - minEq || 0.01;
+
+  let html = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr>
+      <th style="padding:5px 8px;color:var(--muted);font-family:var(--font-mono);text-align:left">PE\\PB</th>
+      ${pbVals.map(pb => `<th style="padding:5px 8px;color:var(--muted);font-family:var(--font-mono)">${pb}</th>`).join("")}
+    </tr></thead>
+    <tbody>
+      ${peVals.map(pe => `<tr>
+        <td style="padding:5px 8px;color:var(--muted);font-family:var(--font-mono)">${pe}</td>
+        ${pbVals.map(pb => {
+          const eq = lookup[`${pe}_${pb}`] ?? 0;
+          const intensity = (eq - minEq) / range;
+          const bg = `rgba(79,255,176,${(0.1 + intensity * 0.5).toFixed(2)})`;
+          return `<td style="padding:5px 8px;text-align:center;background:${bg};
+                             color:var(--text);font-family:var(--font-mono)">${(eq*100).toFixed(0)}%</td>`;
+        }).join("")}
+      </tr>`).join("")}
+    </tbody>
+  </table></div>`;
+
+  el.innerHTML = html;
 }
