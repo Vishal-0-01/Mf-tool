@@ -282,12 +282,14 @@ def analyze():
         
         
         try:
-            returns_df_debug = build_returns_matrix(NAV_DATA, current["codes"])
+            debug_codes = current["filtered_codes"]
+
+            returns_df_debug = build_returns_matrix(NAV_DATA, debug_codes)
 
             nav_debug = {}
             returns_debug = {}
 
-            for code in current["codes"]:
+            for code in debug_codes:
                 series = NAV_DATA.get(code, [])
 
                 nav_debug[code] = {
