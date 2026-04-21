@@ -290,7 +290,7 @@ def analyze():
             returns_debug = {}
 
             for code in debug_codes:
-                series = NAV_DATA.get(code, [])
+                series = NAV_DATA.get(str(code), [])
 
                 nav_debug[code] = {
                     "points": len(series),
