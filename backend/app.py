@@ -317,6 +317,9 @@ def analyze():
             returns_debug = {}
             logger.error(f"Debug block failed: {e}")
 
+        logger.info(f"CODES: {debug_codes}")
+        logger.info(f"NAV KEYS SAMPLE: {list(NAV_DATA.keys())[:5]}")
+
         response = {
             "status": "ok",
             "current_portfolio": current,
