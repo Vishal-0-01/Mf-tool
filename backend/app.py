@@ -325,6 +325,9 @@ def analyze():
         logger.info(f"DEBUG CODES: {debug_codes}")
         logger.info(f"NAV KEYS SAMPLE: {list(NAV_DATA.keys())[:10]}")
 
+        missing_nav = [c for c in debug_codes if c not in NAV_DATA]
+        logger.info(f"MISSING NAV CODES: {missing_nav}")
+
         response = {
             "status": "ok",
             "current_portfolio": current,
