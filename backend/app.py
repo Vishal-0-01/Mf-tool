@@ -279,47 +279,47 @@ def analyze():
 
         # ── DEBUG: NAV + RETURNS VISIBILITY ─────────────────
 
-try:
-    debug_codes = current["filtered_codes"]
+        try:
+           debug_codes = current["filtered_codes"]
 
-    returns_df_debug = build_returns_matrix(NAV_DATA, debug_codes)
+           returns_df_debug = build_returns_matrix(NAV_DATA, debug_codes)
 
-    nav_debug = {}
-    returns_debug = {}
+           nav_debug = {}
+           returns_debug = {}
 
-    for code in debug_codes:
-        code_str = str(code)
+           for code in debug_codes:
+               code_str = str(code)
 
-        series = (
-            NAV_DATA.get(code_str)
-            or NAV_DATA.get(code)
-            or []
-        )
+               series = (
+                   NAV_DATA.get(code_str)
+                   or NAV_DATA.get(code)
+                or []
+               )
 
-        nav_debug[code] = {
-            "points": len(series),
-            "first_nav": float(series[0][1]) if series else None,
-            "last_nav": float(series[-1][1]) if series else None,
-        }
+               nav_debug[code] = {
+                   "points": len(series),
+                   "first_nav": float(series[0][1]) if series else None,
+                   "last_nav": float(series[-1][1]) if series else None,
+               }
 
-        if code_str in returns_df_debug.columns:
-            r = returns_df_debug[code_str].dropna()
-            returns_debug[code] = {
-                "count": int(len(r)),
-                "mean_daily": float(r.mean()) if len(r) else 0.0,
-                "std_daily": float(r.std()) if len(r) else 0.0,
-            }
-        else:
-            returns_debug[code] = {
-                "count": 0,
-                "mean_daily": 0.0,
-                "std_daily": 0.0,
-            }
+               if code_str in returns_df_debug.columns:
+                   r = returns_df_debug[code_str].dropna()
+                   returns_debug[code] = {
+                       "count": int(len(r)),
+                       "mean_daily": float(r.mean()) if len(r) else 0.0,
+                       "std_daily": float(r.std()) if len(r) else 0.0,
+                   }
+               else:
+                  returns_debug[code] = {
+                    "count": 0,
+                    "mean_daily": 0.0,
+                    "std_daily": 0.0,
+                  }
 
-except Exception as e:
-    nav_debug = {}
-    returns_debug = {}
-    logger.error(f"Debug block failed: {e}")
+        except Exception as e:
+           nav_debug = {}
+           returns_debug = {}
+           logger.error(f"Debug block failed: {e}")
 
         logger.info(f"CODES: {debug_codes}")
         logger.info(f"NAV KEYS SAMPLE: {list(NAV_DATA.keys())[:5]}")
@@ -355,7 +355,7 @@ except Exception as e:
             "debug": {
                 "nav": nav_debug,
                 "returns": returns_debug,
-                "filtered_codes": codes,
+                "filtered_codes": debug_codes,
             },
         }
 
