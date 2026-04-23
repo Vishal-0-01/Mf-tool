@@ -290,12 +290,13 @@ def analyze():
            for code in debug_codes:
                code_str = str(code)
 
-               series = (
-                   NAV_DATA.get(code_str)
-                   or NAV_DATA.get(code)
-                or []
-               )
+               series = NAV_DATA.get(code_str)
 
+               if series is None:
+                   series = NAV_DATA.get(code)
+
+               if series is None:
+                   series = []
                nav_debug[code] = {
                    "points": len(series),
                    "first_nav": float(series[0][1]) if series else None,
@@ -321,8 +322,8 @@ def analyze():
            returns_debug = {}
            logger.error(f"Debug block failed: {e}")
 
-        logger.info(f"CODES: {debug_codes}")
-        logger.info(f"NAV KEYS SAMPLE: {list(NAV_DATA.keys())[:5]}")
+        logger.info(f"DEBUG CODES: {debug_codes}")
+        logger.info(f"NAV KEYS SAMPLE: {list(NAV_DATA.keys())[:10]}")
 
         response = {
             "status": "ok",
