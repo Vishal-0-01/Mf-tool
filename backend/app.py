@@ -71,29 +71,7 @@ def get_funds():
         })
     return jsonify({"status": "ok", "funds": result})
 
-@app.route("/api/debug/nav", methods=["GET"])
-def debug_nav():
-    try:
-        sample = {}
 
-        for code, series in NAV_DATA.items():
-            sample[str(code)] = {
-                "points": len(series),
-                "first_5": series[:5],
-                "last_5": series[-5:],
-            }
-
-        return jsonify({
-            "status": "ok",
-            "total_funds": len(NAV_DATA),
-            "data": sample
-        })
-
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
 
 
 @app.route("/api/analyze", methods=["POST"])
