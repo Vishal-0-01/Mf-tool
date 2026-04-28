@@ -330,8 +330,27 @@ def analyze():
 @app.route("/api/reload", methods=["POST"])
 def reload_nav():
     global NAV_DATA
-    NAV_DATA = load_nav_data(force_refresh=True)
-    return jsonify({"status": "ok", "message": f"Reloaded {len(NAV_DATA)} funds."})
+
+    try:
+        logger.info("Reloading NAV data...")
+
+        NAV_DATA = load_nav_data(force_refresh=True)
+
+        logger.info(f"NAV loaded: {len(NAV_DATA)} funds")
+
+        return jsonify({
+            "status": "ok",
+            "message": f"Reloaded {len(NAV_DATA)} funds."
+        })
+
+    except Exception as e:
+        logger.error("RELOAD FAILED:")
+        logger.error(traceback.format_exc())
+
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 @app.route("/health", methods=["GET"])
