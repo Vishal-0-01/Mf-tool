@@ -7,7 +7,6 @@ import logging
 import os
 import numpy as np
 import traceback
-NAV_DATA = None
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -18,17 +17,8 @@ from optimizer import (
     generate_efficient_frontier,
     build_optimal_portfolio,
     compute_actions,
-    # ── NEW ──
-    generate_unconstrained_frontier,
-    optimize_target_risk,
-    compute_adjusted_user_portfolio,
-    compute_exposure,
-    compute_risk_contribution,
-    compute_concentration,
-    compute_redundancy,
-    compute_macro_sensitivity,
 )
-from utils import portfolio_metrics, build_returns_matrix
+from utils import portfolio_metrics
 
 # ── Logging ─────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -39,9 +29,9 @@ app = Flask(__name__)
 CORS(app)
 
 # ── Load NAV data ───────────────────────────────────────
-#logger.info("Loading NAV data...")
-#NAV_DATA = load_nav_data()
-#logger.info(f"NAV data loaded for {len(NAV_DATA)} funds.")
+logger.info("Loading NAV data...")
+NAV_DATA = load_nav_data()
+logger.info(f"NAV data loaded for {len(NAV_DATA)} funds.")
 
 
 # ── JSON safe conversion ────────────────────────────────
@@ -95,14 +85,6 @@ def analyze():
                 }), 400
 
         # ── 1. Portfolio analysis ──────────────
-        global NAV_DATA
-
-        if NAV_DATA is None:
-            return jsonify({
-               "status": "error",
-               "message": "Server warming up. Try again in 30 seconds."
-            }), 503
-
         current = analyze_current_portfolio(holdings, NAV_DATA)
 
         # 🔥 USE FILTERED DATA (CORE FIX)
@@ -197,95 +179,6 @@ def analyze():
             current, macro, action_result, opt_ret, opt_vol, opt_sr
         )
 
-        # ════════════════════════════════════════════════
-        # NEW FEATURES — appended, nothing above changed
-        # ════════════════════════════════════════════════
-
-        # 9. Unconstrained frontier
-        try:
-            frontier_unconstrained = generate_unconstrained_frontier(
-                mean_returns, cov_matrix, codes
-            )
-        except Exception:
-            frontier_unconstrained = []
-
-        # 10. Target-risk portfolio (benchmark at user's portfolio vol)
-        target_vol = float(body.get("target_volatility", current["portfolio_volatility"]))
-        try:
-            target_portfolio = optimize_target_risk(
-                mean_returns, cov_matrix, codes, target_vol
-            )
-        except Exception:
-            target_portfolio = {"weights": {}, "return": 0.0, "volatility": 0.0, "sharpe": 0.0}
-
-        # 11. Adjusted user portfolio
-        try:
-            adjusted_user_portfolio = compute_adjusted_user_portfolio(
-                current, macro, mean_returns, cov_matrix, codes
-            )
-        except Exception:
-            adjusted_user_portfolio = {"weights": {}, "return": 0.0, "volatility": 0.0, "sharpe": 0.0}
-
-        # 12. Same-risk comparison (all evaluated at user portfolio volatility)
-        try:
-            comparison = {
-                "same_risk": {
-                    "target_volatility": round(target_vol, 4),
-                    "user_return":    current["portfolio_return"],
-                    "target_return":  target_portfolio["return"],
-                    "optimal_return": round(opt_ret, 4),
-                    "user_sharpe":    current["sharpe"],
-                    "target_sharpe":  target_portfolio["sharpe"],
-                    "optimal_sharpe": round(opt_sr, 4),
-                }
-            }
-        except Exception:
-            comparison = {}
-
-        # 13. Constraint impact
-        try:
-            constraint_impact = {
-                "return_loss": round(target_portfolio["return"] - opt_ret, 4),
-                "sharpe_loss": round(target_portfolio["sharpe"] - opt_sr, 4),
-            }
-        except Exception:
-            constraint_impact = {}
-
-        # 14. Exposure decomposition
-        try:
-            exposure = compute_exposure(current)
-        except Exception:
-            exposure = {}
-
-        # 15. Diagnostics
-        try:
-            filtered_weights_for_diag = [optimal_weights.get(c, 0.0) for c in codes]
-            risk_contribution = compute_risk_contribution(
-                filtered_weights_for_diag, cov_matrix, codes
-            )
-        except Exception:
-            risk_contribution = {}
-
-        try:
-            concentration = compute_concentration(
-                [current["weights"][i] for i in range(len(current["codes"]))],
-                current["codes"]
-            )
-        except Exception:
-            concentration = {}
-
-        try:
-            returns_df_for_redund = build_returns_matrix(NAV_DATA, codes)
-            redundancy = compute_redundancy(returns_df_for_redund, codes)
-        except Exception:
-            redundancy = []
-
-        # 16. Macro sensitivity
-        try:
-            macro_sensitivity = compute_macro_sensitivity(pe, pb)
-        except Exception:
-            macro_sensitivity = []
-
         response = {
             "status": "ok",
             "current_portfolio": current,
@@ -300,20 +193,6 @@ def analyze():
             "macro": macro,
             "actions": action_result,
             "insights": insights,
-            # ── NEW fields ──
-            "frontier_constrained":    frontier,
-            "frontier_unconstrained":  frontier_unconstrained,
-            "target_portfolio":        target_portfolio,
-            "adjusted_user_portfolio": adjusted_user_portfolio,
-            "comparison":              comparison,
-            "constraint_impact":       constraint_impact,
-            "exposure":                exposure,
-            "macro_sensitivity":       macro_sensitivity,
-            "diagnostics": {
-                "risk_contribution": risk_contribution,
-                "concentration":     concentration,
-                "redundancy":        redundancy,
-            },
         }
 
         return jsonify(to_serializable(response))
@@ -330,27 +209,8 @@ def analyze():
 @app.route("/api/reload", methods=["POST"])
 def reload_nav():
     global NAV_DATA
-
-    try:
-        logger.info("Reloading NAV data...")
-
-        NAV_DATA = load_nav_data(force_refresh=True)
-
-        logger.info(f"NAV loaded: {len(NAV_DATA)} funds")
-
-        return jsonify({
-            "status": "ok",
-            "message": f"Reloaded {len(NAV_DATA)} funds."
-        })
-
-    except Exception as e:
-        logger.error("RELOAD FAILED:")
-        logger.error(traceback.format_exc())
-
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+    NAV_DATA = load_nav_data(force_refresh=True)
+    return jsonify({"status": "ok", "message": f"Reloaded {len(NAV_DATA)} funds."})
 
 
 @app.route("/health", methods=["GET"])
