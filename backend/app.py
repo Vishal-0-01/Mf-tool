@@ -7,6 +7,7 @@ import logging
 import os
 import numpy as np
 import traceback
+NAV_DATA = None
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -38,9 +39,9 @@ app = Flask(__name__)
 CORS(app)
 
 # ── Load NAV data ───────────────────────────────────────
-logger.info("Loading NAV data...")
-NAV_DATA = load_nav_data()
-logger.info(f"NAV data loaded for {len(NAV_DATA)} funds.")
+#logger.info("Loading NAV data...")
+#NAV_DATA = load_nav_data()
+#logger.info(f"NAV data loaded for {len(NAV_DATA)} funds.")
 
 
 # ── JSON safe conversion ────────────────────────────────
@@ -94,6 +95,12 @@ def analyze():
                 }), 400
 
         # ── 1. Portfolio analysis ──────────────
+        global NAV_DATA
+
+        if NAV_DATA is None:
+            logger.info("Lazy loading NAV data...")
+            NAV_DATA = load_nav_data()
+
         current = analyze_current_portfolio(holdings, NAV_DATA)
 
         # 🔥 USE FILTERED DATA (CORE FIX)
