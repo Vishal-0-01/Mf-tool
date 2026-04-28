@@ -98,8 +98,10 @@ def analyze():
         global NAV_DATA
 
         if NAV_DATA is None:
-            logger.info("Lazy loading NAV data...")
-            NAV_DATA = load_nav_data()
+            return jsonify({
+               "status": "error",
+               "message": "Server warming up. Try again in 30 seconds."
+            }), 503
 
         current = analyze_current_portfolio(holdings, NAV_DATA)
 
