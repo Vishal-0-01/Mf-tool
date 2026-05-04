@@ -17,8 +17,17 @@ from optimizer import (
     generate_efficient_frontier,
     build_optimal_portfolio,
     compute_actions,
+    # ── NEW ──
+    generate_unconstrained_frontier,
+    optimize_target_risk,
+    compute_adjusted_user_portfolio,
+    compute_exposure,
+    compute_risk_contribution,
+    compute_concentration,
+    compute_redundancy,
+    compute_macro_sensitivity,
 )
-from utils import portfolio_metrics
+from utils import portfolio_metrics, build_returns_matrix
 
 # ── Logging ─────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -179,94 +188,93 @@ def analyze():
             current, macro, action_result, opt_ret, opt_vol, opt_sr
         )
 
-        # ── NEW FEATURES ───────────────────────
+        # ════════════════════════════════════════════════
+        # NEW FEATURES — appended, nothing above changed
+        # ════════════════════════════════════════════════
 
-# 1. Unconstrained frontier
+        # 9. Unconstrained frontier
         try:
             frontier_unconstrained = generate_unconstrained_frontier(
-                 mean_returns, cov_matrix, codes
+                mean_returns, cov_matrix, codes
             )
         except Exception:
             frontier_unconstrained = []
 
-# 2. Target portfolio (same risk)
-        target_vol = current["portfolio_volatility"]
+        # 10. Target-risk portfolio (benchmark at user's portfolio vol)
+        target_vol = float(body.get("target_volatility", current["portfolio_volatility"]))
         try:
             target_portfolio = optimize_target_risk(
                 mean_returns, cov_matrix, codes, target_vol
             )
         except Exception:
-            target_portfolio = {}
+            target_portfolio = {"weights": {}, "return": 0.0, "volatility": 0.0, "sharpe": 0.0}
 
-# 3. Adjusted user portfolio
+        # 11. Adjusted user portfolio
         try:
             adjusted_user_portfolio = compute_adjusted_user_portfolio(
                 current, macro, mean_returns, cov_matrix, codes
             )
         except Exception:
-            adjusted_user_portfolio = {}
+            adjusted_user_portfolio = {"weights": {}, "return": 0.0, "volatility": 0.0, "sharpe": 0.0}
 
-# 4. Comparison
-        comparison = {
-            "same_risk": {
-                "target_volatility": target_vol,
-                "user_return": current["portfolio_return"],
-                "target_return": target_portfolio.get("return", 0),
-                "optimal_return": opt_ret,
-                "user_sharpe": current["sharpe"],
-                "target_sharpe": target_portfolio.get("sharpe", 0),
-                "optimal_sharpe": opt_sr,
+        # 12. Same-risk comparison (all evaluated at user portfolio volatility)
+        try:
+            comparison = {
+                "same_risk": {
+                    "target_volatility": round(target_vol, 4),
+                    "user_return":    current["portfolio_return"],
+                    "target_return":  target_portfolio["return"],
+                    "optimal_return": round(opt_ret, 4),
+                    "user_sharpe":    current["sharpe"],
+                    "target_sharpe":  target_portfolio["sharpe"],
+                    "optimal_sharpe": round(opt_sr, 4),
+                }
             }
-        }
+        except Exception:
+            comparison = {}
 
-# 5. Constraint impact
-        constraint_impact = {
-            "return_loss": target_portfolio.get("return", 0) - opt_ret,
-            "sharpe_loss": target_portfolio.get("sharpe", 0) - opt_sr,
-        }
+        # 13. Constraint impact
+        try:
+            constraint_impact = {
+                "return_loss": round(target_portfolio["return"] - opt_ret, 4),
+                "sharpe_loss": round(target_portfolio["sharpe"] - opt_sr, 4),
+            }
+        except Exception:
+            constraint_impact = {}
 
-# 6. Exposure
+        # 14. Exposure decomposition
         try:
             exposure = compute_exposure(current)
-        except:
+        except Exception:
             exposure = {}
 
-# 7. Diagnostics
+        # 15. Diagnostics
         try:
+            filtered_weights_for_diag = [optimal_weights.get(c, 0.0) for c in codes]
             risk_contribution = compute_risk_contribution(
-                [optimal_weights.get(c, 0.0) for c in codes],
-                cov_matrix,
-                codes
+                filtered_weights_for_diag, cov_matrix, codes
             )
-        except:
+        except Exception:
             risk_contribution = {}
 
         try:
             concentration = compute_concentration(
-                current["weights"],
+                [current["weights"][i] for i in range(len(current["codes"]))],
                 current["codes"]
             )
-        except:
+        except Exception:
             concentration = {}
 
         try:
-            redundancy = compute_redundancy(
-                build_returns_matrix(NAV_DATA, codes),
-                codes
-            )
-        except:
+            returns_df_for_redund = build_returns_matrix(NAV_DATA, codes)
+            redundancy = compute_redundancy(returns_df_for_redund, codes)
+        except Exception:
             redundancy = []
 
-        diagnostics = {
-            "risk_contribution": risk_contribution,
-            "concentration": concentration,
-            "redundancy": redundancy,
-        }
-
-# 8. Macro sensitivity
+        # 16. Macro sensitivity
         try:
             macro_sensitivity = compute_macro_sensitivity(pe, pb)
-        except:
+        except Exception:
             macro_sensitivity = []
 
         response = {
@@ -279,21 +287,24 @@ def analyze():
                 "sharpe": float(round(opt_sr, 4)),
             },
             "frontier": frontier,
-            "frontier_constrained": frontier,
-            "frontier_unconstrained": frontier_unconstrained,
             "selected_frontier_index": idx,
             "macro": macro,
             "actions": action_result,
             "insights": insights,
-
-    # 🔥 THESE WERE MISSING
-            "target_portfolio": target_portfolio,
+            # ── NEW fields ──
+            "frontier_constrained":    frontier,
+            "frontier_unconstrained":  frontier_unconstrained,
+            "target_portfolio":        target_portfolio,
             "adjusted_user_portfolio": adjusted_user_portfolio,
-            "comparison": comparison,
-            "constraint_impact": constraint_impact,
-            "exposure": exposure,
-            "diagnostics": diagnostics,
-            "macro_sensitivity": macro_sensitivity,
+            "comparison":              comparison,
+            "constraint_impact":       constraint_impact,
+            "exposure":                exposure,
+            "macro_sensitivity":       macro_sensitivity,
+            "diagnostics": {
+                "risk_contribution": risk_contribution,
+                "concentration":     concentration,
+                "redundancy":        redundancy,
+            },
         }
 
         return jsonify(to_serializable(response))
