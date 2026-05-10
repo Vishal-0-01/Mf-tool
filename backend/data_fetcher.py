@@ -114,15 +114,29 @@ def _save_cache(nav_data):
 
 def _synthetic_nav(seed: int, n: int = 756) -> pd.Series:
     """Generate ~3 years of synthetic daily NAV."""
+
     rng = np.random.default_rng(seed)
+
     annual_ret = rng.uniform(0.08, 0.22)
     annual_vol = rng.uniform(0.12, 0.28)
+
     daily_ret = annual_ret / 252
     daily_vol = annual_vol / np.sqrt(252)
-    returns = rng.normal(daily_ret, daily_vol, n)
-    nav = 100 * np.cumprod(1 + returns)
+
     end = datetime.today()
+
     dates = pd.bdate_range(end=end, periods=n)
+
+    # IMPORTANT:
+    # force returns length = dates length
+    returns = rng.normal(
+        daily_ret,
+        daily_vol,
+        len(dates)
+    )
+
+    nav = 100 * np.cumprod(1 + returns)
+
     return pd.Series(nav, index=dates)
 
 
